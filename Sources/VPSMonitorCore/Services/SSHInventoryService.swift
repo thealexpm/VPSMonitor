@@ -174,13 +174,22 @@ emit METRIC disk_free_bytes "$disk_free"
 emit METRIC disk_total_bytes "$disk_total"
 emit METRIC uptime_seconds "${uptime%%.*}"
 
-# Scan common project root directories
-for scandir in /opt /var/www /srv /app; do
+# Scan all common locations where projects, sites, bots, VPNs live
+for scandir in \
+    /opt /var/www /srv /app /apps \
+    /web /www /websites /sites /projects \
+    /data /storage /docker /containers; do
   [ -d "$scandir" ] || continue
-  find "$scandir" -mindepth 1 -maxdepth 1 -type d -print0 |
-    while IFS= read -r -d '' directory; do
-      emit DIRECTORY "$(b64 "$directory")"
-    done
+  find "$scandir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null |
+    while IFS= read -r -d '' d; do emit DIRECTORY "$(b64 "$d")"; done
+done
+
+# One level inside every user home directory (catches /home/ubuntu/myproject etc.)
+for homedir in /root /home/*/; do
+  [ -d "$homedir" ] || continue
+  find "$homedir" -mindepth 1 -maxdepth 1 -type d \
+       ! -name '.*' -print0 2>/dev/null |
+    while IFS= read -r -d '' d; do emit DIRECTORY "$(b64 "$d")"; done
 done
 
 {

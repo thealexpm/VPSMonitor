@@ -99,7 +99,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Как формируется список", systemImage: "magnifyingglass")
                 .font(.headline)
-            Text("Приложение при каждой проверке заново сканирует каталоги /opt и службы VPS. Системные службы не засоряют основной список: сейчас скрыто \(snapshot.systemServiceCount).")
+            Text("Приложение сканирует /opt, /var/www, /srv, /app, /home/* и другие директории, а также все активные systemd-службы. Нажмите «Настроить» чтобы скрыть ненужные пункты.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

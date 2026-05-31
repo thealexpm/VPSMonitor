@@ -2,33 +2,29 @@ import Foundation
 
 public enum ProjectInventoryBuilder {
 
-    // Directories scanned on the remote server (must match remote script)
-    private static let scanRoots = ["/opt", "/var/www", "/srv", "/app"]
-
     public static func build(from inventory: RemoteInventory) -> [DetectedProject] {
         var linkedServiceNames = Set<String>()
 
-        // Only include directories that are exactly one level below a scan root
-        var projects = inventory.directories
-            .filter(isDirectlyUnderScanRoot)
-            .map { directory -> DetectedProject in
-                let linked = inventory.services.filter {
-                    $0.workingDirectory == directory ||
-                    $0.workingDirectory.hasPrefix(directory + "/")
-                }
-                linkedServiceNames.formUnion(linked.map(\.name))
-                return makeProject(id: directory, path: directory, services: linked)
+        // Show every directory the remote script found.
+        // The script already applies maxdepth 1, so each path is a meaningful entry.
+        let dirProjects: [DetectedProject] = inventory.directories.map { directory in
+            let linked = inventory.services.filter {
+                $0.workingDirectory == directory ||
+                $0.workingDirectory.hasPrefix(directory + "/")
             }
-
-        // Standalone services that look like user apps (not linked to a directory)
-        let standalone = inventory.services.filter {
-            !linkedServiceNames.contains($0.name) && isLikelyApplicationService($0)
-        }
-        projects += standalone.map {
-            makeProject(id: "service:\($0.name)", path: nil, services: [$0])
+            linkedServiceNames.formUnion(linked.map(\.name))
+            return makeProject(id: directory, path: directory, services: linked)
         }
 
-        return projects.sorted {
+        // Show ALL services that are NOT already linked to a directory.
+        // Filter out pure OS internals that are never interesting to the user.
+        let serviceProjects: [DetectedProject] = inventory.services
+            .filter { !linkedServiceNames.contains($0.name) }
+            .filter { !isKernelInternal($0) }
+            .map { makeProject(id: "service:\($0.name)", path: nil, services: [$0]) }
+
+        let all = dirProjects + serviceProjects
+        return all.sorted {
             if $0.state != $1.state { return stateRank($0.state) < stateRank($1.state) }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
@@ -38,20 +34,12 @@ public enum ProjectInventoryBuilder {
         in inventory: RemoteInventory,
         projects: [DetectedProject]
     ) -> Int {
-        let displayed = Set(projects.flatMap(\.services).map(\.name))
-        return inventory.services.filter { !displayed.contains($0.name) }.count
+        // No longer filtering system services out of the count —
+        // we show everything, so this is always 0.
+        return 0
     }
 
-    // MARK: - Private helpers
-
-    /// Returns true when `path` is exactly one directory level below one of the scan roots.
-    /// e.g. /opt/mybot ✓, /var/www/mysite ✓, /opt/mybot/config ✗
-    private static func isDirectlyUnderScanRoot(_ path: String) -> Bool {
-        scanRoots.contains { root in
-            path.hasPrefix(root + "/") &&
-            !path.dropFirst(root.count + 1).contains("/")
-        }
-    }
+    // MARK: - Private
 
     private static func makeProject(
         id: String,
@@ -59,28 +47,31 @@ public enum ProjectInventoryBuilder {
         services: [RemoteService]
     ) -> DetectedProject {
         let state: DetectedProject.State
-        if services.contains(where: \.isRunning) {
-            state = .running
-        } else if services.isEmpty {
-            state = .folderOnly
+        if services.contains(where: \.isRunning)  { state = .running    }
+        else if services.isEmpty                  { state = .folderOnly  }
+        else                                      { state = .stopped     }
+
+        let name: String
+        if let path {
+            name = path.split(separator: "/").last.map(String.init) ?? path
         } else {
-            state = .stopped
+            name = services.first?.name
+                .replacingOccurrences(of: ".service", with: "") ?? id
         }
-
-        let name = path.flatMap { $0.split(separator: "/").last.map(String.init) }
-            ?? services.first?.name.replacingOccurrences(of: ".service", with: "")
-            ?? id
-
         return DetectedProject(id: id, name: name, path: path, services: services, state: state)
     }
 
-    /// Decides whether a service that is NOT linked to any discovered directory
-    /// should be shown as a standalone project entry.
-    private static func isLikelyApplicationService(_ service: RemoteService) -> Bool {
-        // Always show services with a unit file in /etc/systemd/system (user-created)
-        if service.fragmentPath.hasPrefix("/etc/systemd/system/") { return true }
-        // Show services whose working directory is inside a scan root
-        if scanRoots.contains(where: { service.workingDirectory.hasPrefix($0 + "/") }) { return true }
+    /// Returns true for low-level kernel/init services that are never useful
+    /// to show to the user, even in "show everything" mode.
+    private static func isKernelInternal(_ service: RemoteService) -> Bool {
+        let name = service.name.lowercased()
+        // systemd's own housekeeping units
+        if name.hasPrefix("systemd-") { return true }
+        // Kernel socket/device/mount units
+        if name.hasSuffix(".socket") || name.hasSuffix(".device") ||
+           name.hasSuffix(".mount")  || name.hasSuffix(".swap")   ||
+           name.hasSuffix(".target") || name.hasSuffix(".path")   ||
+           name.hasSuffix(".timer")  { return true }
         return false
     }
 
