@@ -1,0 +1,258 @@
+import Combine
+import Foundation
+
+@MainActor
+public final class MonitorStore: ObservableObject {
+    public enum LoadState: Sendable {
+        case waiting
+        case refreshing
+        case loaded(ServerSnapshot)
+        case failed(String)
+    }
+
+    @Published public var configurations: [MonitorConfiguration] {
+        didSet {
+            saveConfigurations()
+            normalizeSelection()
+            reconcilePollingTasks()
+        }
+    }
+    @Published public var selectedServerID: UUID? {
+        didSet { saveSelectedServerID() }
+    }
+    @Published public private(set) var loadStates: [UUID: LoadState] = [:]
+    @Published public private(set) var snapshots: [UUID: ServerSnapshot] = [:]
+    @Published public private(set) var metricHistory: [UUID: [MetricSample]] = [:]
+
+    private let inventoryService: SSHInventoryService
+    private var pollingTasks: [UUID: Task<Void, Never>] = [:]
+    private var pollingStarted = false
+
+    public init(inventoryService: SSHInventoryService = SSHInventoryService()) {
+        self.inventoryService = inventoryService
+        let defaults = UserDefaults.standard
+        self.configurations = Self.loadConfigurations(from: defaults)
+        self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
+        normalizeSelection()
+    }
+
+    public var selectedConfiguration: MonitorConfiguration? {
+        configurations.first { $0.id == selectedServerID } ?? configurations.first
+    }
+
+    public var selectedLoadState: LoadState {
+        guard let id = selectedConfiguration?.id else { return .waiting }
+        return loadStates[id] ?? .waiting
+    }
+
+    public var selectedSnapshot: ServerSnapshot? {
+        guard let id = selectedConfiguration?.id else { return nil }
+        return snapshots[id]
+    }
+
+    public var selectedMetricHistory: [MetricSample] {
+        guard let id = selectedConfiguration?.id else { return [] }
+        return metricHistory[id] ?? []
+    }
+
+    public func metricHistory(for serverID: UUID) -> [MetricSample] {
+        metricHistory[serverID] ?? []
+    }
+
+    public var menuTitle: String {
+        guard !configurations.isEmpty else { return "VPS: не настроены" }
+        let healthyCount = configurations.filter { isHealthy(serverID: $0.id) }.count
+        return "VPS: \(healthyCount)/\(configurations.count) доступно"
+    }
+
+    public var menuSystemImage: String {
+        guard !configurations.isEmpty else { return "server.rack" }
+        if configurations.contains(where: { isFailed(serverID: $0.id) }) {
+            return "xmark.circle.fill"
+        }
+        if configurations.allSatisfy({ isHealthy(serverID: $0.id) }) {
+            return "checkmark.circle.fill"
+        }
+        return "arrow.triangle.2.circlepath"
+    }
+
+    public func start() {
+        guard !pollingStarted else { return }
+        pollingStarted = true
+        reconcilePollingTasks()
+    }
+
+    public func refresh(serverID: UUID) async {
+        guard let configuration = configurations.first(where: { $0.id == serverID }) else { return }
+        let previousState = loadStates[serverID]
+        let previousSnapshot = snapshots[serverID]
+        loadStates[serverID] = .refreshing
+        do {
+            let snapshot = try await inventoryService.fetch(configuration: configuration)
+            snapshots[serverID] = snapshot
+            loadStates[serverID] = .loaded(snapshot)
+
+            // Notify when server comes back after being down
+            switch previousState {
+            case .failed: NotificationService.sendServerRestored(serverName: configuration.name)
+            default: break
+            }
+
+            // Notify about newly stopped services
+            if let prev = previousSnapshot {
+                let prevRunning = Set(prev.projects.filter { $0.state == .running }.map(\.name))
+                for project in snapshot.projects where project.state == .stopped && prevRunning.contains(project.name) {
+                    NotificationService.sendServiceStopped(serviceName: project.name, serverName: configuration.name)
+                }
+            }
+
+            // Record metric sample (keep last 30)
+            let memPercent = snapshot.memoryTotalBytes > 0
+                ? Double(snapshot.memoryUsedBytes) / Double(snapshot.memoryTotalBytes) * 100 : 0
+            let diskUsedPercent = snapshot.diskTotalBytes > 0
+                ? (1.0 - Double(snapshot.diskFreeBytes) / Double(snapshot.diskTotalBytes)) * 100 : 0
+            let sample = MetricSample(
+                timestamp: snapshot.checkedAt,
+                cpuPercent: Double(snapshot.cpuUsagePercent),
+                memoryPercent: memPercent,
+                diskUsedPercent: diskUsedPercent
+            )
+            var history = metricHistory[serverID] ?? []
+            history.append(sample)
+            if history.count > 30 { history.removeFirst(history.count - 30) }
+            metricHistory[serverID] = history
+
+        } catch {
+            // Notify only when server was previously reachable
+            switch previousState {
+            case .loaded: NotificationService.sendServerDown(serverName: configuration.name)
+            default: break
+            }
+            loadStates[serverID] = .failed(error.localizedDescription)
+        }
+    }
+
+    public func refreshSelectedServer() async {
+        guard let id = selectedConfiguration?.id else { return }
+        await refresh(serverID: id)
+    }
+
+    public func refreshAll() {
+        for configuration in configurations {
+            Task { await refresh(serverID: configuration.id) }
+        }
+    }
+
+    public func addServer(_ configuration: MonitorConfiguration) {
+        configurations.append(configuration)
+        selectedServerID = configuration.id
+    }
+
+    public func removeServers(at offsets: IndexSet) {
+        let removedIDs = offsets.map { configurations[$0].id }
+        for offset in offsets.sorted(by: >) {
+            configurations.remove(at: offset)
+        }
+        for id in removedIDs {
+            loadStates[id] = nil
+            snapshots[id] = nil
+            metricHistory[id] = nil
+        }
+    }
+
+    public func removeServer(id: UUID) {
+        guard let index = configurations.firstIndex(where: { $0.id == id }) else { return }
+        removeServers(at: IndexSet(integer: index))
+    }
+
+    public func updateConfiguration(_ configuration: MonitorConfiguration) {
+        guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
+        configurations[index] = configuration
+    }
+
+    public func state(for serverID: UUID) -> LoadState {
+        loadStates[serverID] ?? .waiting
+    }
+
+    public func snapshot(for serverID: UUID) -> ServerSnapshot? {
+        snapshots[serverID]
+    }
+
+    public func isHealthy(serverID: UUID) -> Bool {
+        guard case .loaded(let snapshot) = state(for: serverID) else { return false }
+        return !snapshot.projects.contains(where: { $0.state == .stopped })
+    }
+
+    private func isFailed(serverID: UUID) -> Bool {
+        if case .failed = state(for: serverID) { return true }
+        return false
+    }
+
+    private func reconcilePollingTasks() {
+        guard pollingStarted else { return }
+        let configuredIDs = Set(configurations.map(\.id))
+        let removedIDs = pollingTasks.keys.filter { !configuredIDs.contains($0) }
+
+        for id in removedIDs {
+            pollingTasks.removeValue(forKey: id)?.cancel()
+        }
+
+        for configuration in configurations where pollingTasks[configuration.id] == nil {
+            let id = configuration.id
+            pollingTasks[id] = Task { [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    await self.refresh(serverID: id)
+                    guard let interval = self.configurations.first(where: { $0.id == id })?.refreshInterval else {
+                        return
+                    }
+                    try? await Task.sleep(for: .seconds(interval))
+                }
+            }
+        }
+    }
+
+    private func normalizeSelection() {
+        guard !configurations.isEmpty else {
+            selectedServerID = nil
+            return
+        }
+        if !configurations.contains(where: { $0.id == selectedServerID }) {
+            selectedServerID = configurations.first?.id
+        }
+    }
+
+    private func saveConfigurations() {
+        guard let data = try? JSONEncoder().encode(configurations) else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(data, forKey: "monitor.configurations")
+    }
+
+    private func saveSelectedServerID() {
+        UserDefaults.standard.set(selectedServerID?.uuidString, forKey: "monitor.selectedServerID")
+    }
+
+    private static func loadConfigurations(from defaults: UserDefaults) -> [MonitorConfiguration] {
+        if let data = defaults.data(forKey: "monitor.configurations"),
+           let configurations = try? JSONDecoder().decode([MonitorConfiguration].self, from: data),
+           !configurations.isEmpty {
+            return configurations
+        }
+
+        // Migrate from single-server legacy keys (pre-multi-server versions)
+        let legacyHost = defaults.string(forKey: "monitor.host")
+        let legacyUser = defaults.string(forKey: "monitor.user")
+        let legacyInterval = defaults.double(forKey: "monitor.refreshInterval")
+        guard let host = legacyHost, !host.isEmpty else {
+            return []   // Fresh install: user adds their own server via Settings
+        }
+        return [
+            MonitorConfiguration(
+                name: "My VPS",
+                host: host,
+                user: legacyUser ?? "root",
+                refreshInterval: legacyInterval > 0 ? legacyInterval : 30
+            )
+        ]
+    }
+}
