@@ -61,6 +61,10 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
+# Ad-hoc signing: clears "developer cannot be verified" warning on this Mac.
+# For distribution to other users, use script/release.sh with a Developer ID.
+codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
