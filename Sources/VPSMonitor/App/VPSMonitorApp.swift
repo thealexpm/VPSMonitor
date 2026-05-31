@@ -16,11 +16,16 @@ struct VPSMonitorApp: App {
     @StateObject private var store = MonitorStore()
 
     var body: some Scene {
-        WindowGroup("Мой VPS", id: "dashboard") {
+        WindowGroup("VPSMonitor", id: "dashboard") {
             ContentView(store: store)
                 .frame(minWidth: 760, minHeight: 620)
                 .task { store.start() }
         }
+
+        WindowGroup("О программе", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
 
         MenuBarExtra {
             MonitorMenuView(store: store)

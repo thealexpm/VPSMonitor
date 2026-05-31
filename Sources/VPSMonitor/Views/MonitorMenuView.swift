@@ -47,6 +47,10 @@ struct MonitorMenuView: View {
         SettingsLink {
             Text("Настройки")
         }
+        Button("О программе") {
+            openWindow(id: "about")
+            NSApp.activate(ignoringOtherApps: true)
+        }
         Button("Завершить работу") {
             NSApplication.shared.terminate(nil)
         }
