@@ -14,12 +14,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct VPSMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = MonitorStore()
+    @StateObject private var updateChecker = UpdateChecker()
 
     var body: some Scene {
         WindowGroup("VPSMonitor", id: "dashboard") {
-            ContentView(store: store)
+            ContentView(store: store, updateChecker: updateChecker)
                 .frame(minWidth: 760, minHeight: 620)
-                .task { store.start() }
+                .task {
+                    store.start()
+                    updateChecker.checkInBackground()
+                }
         }
         .commands {
             // Use a View struct so @Environment(\.openWindow) is available
@@ -34,7 +38,7 @@ struct VPSMonitorApp: App {
         .windowResizability(.contentSize)
 
         MenuBarExtra {
-            MonitorMenuView(store: store)
+            MonitorMenuView(store: store, updateChecker: updateChecker)
         } label: {
             Label(store.menuTitle, systemImage: store.menuSystemImage)
         }

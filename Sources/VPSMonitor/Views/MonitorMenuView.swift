@@ -5,6 +5,7 @@ import VPSMonitorCore
 struct MonitorMenuView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var store: MonitorStore
+    @ObservedObject var updateChecker: UpdateChecker
 
     var body: some View {
         Text(store.menuTitle)
@@ -40,6 +41,15 @@ struct MonitorMenuView: View {
         }
         Button("Проверить сейчас") {
             store.refreshAll()
+        }
+        Button(updateChecker.availableUpdate != nil
+               ? "Доступно обновление"
+               : "Проверить обновления") {
+            updateChecker.checkInBackground()
+            if updateChecker.availableUpdate != nil {
+                openWindow(id: "dashboard")
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
 
         Divider()

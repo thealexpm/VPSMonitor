@@ -3,12 +3,20 @@ import VPSMonitorCore
 
 struct ContentView: View {
     @ObservedObject var store: MonitorStore
+    @ObservedObject var updateChecker: UpdateChecker
 
     var body: some View {
         NavigationSplitView {
             ServerSidebarView(store: store)
         } detail: {
-            serverDetail
+            VStack(spacing: 0) {
+                if let update = updateChecker.availableUpdate {
+                    UpdateBanner(update: update) { updateChecker.dismiss() }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+                }
+                serverDetail
+            }
         }
     }
 
