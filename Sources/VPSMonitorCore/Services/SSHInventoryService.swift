@@ -174,12 +174,14 @@ emit METRIC disk_free_bytes "$disk_free"
 emit METRIC disk_total_bytes "$disk_total"
 emit METRIC uptime_seconds "${uptime%%.*}"
 
-if [ -d /opt ]; then
-  find /opt -mindepth 1 -maxdepth 1 -type d -print0 |
+# Scan common project root directories
+for scandir in /opt /var/www /srv /app; do
+  [ -d "$scandir" ] || continue
+  find "$scandir" -mindepth 1 -maxdepth 1 -type d -print0 |
     while IFS= read -r -d '' directory; do
       emit DIRECTORY "$(b64 "$directory")"
     done
-fi
+done
 
 {
   find /etc/systemd/system -maxdepth 1 -type f -name '*.service' -printf '%f\n'
