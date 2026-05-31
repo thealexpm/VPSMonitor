@@ -35,10 +35,41 @@ public final class MonitorStore: ObservableObject {
     public init(inventoryService: SSHInventoryService = SSHInventoryService()) {
         self.inventoryService = inventoryService
         let defaults = UserDefaults.standard
-        self.configurations = Self.loadConfigurations(from: defaults)
-        self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
-        self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
-        normalizeSelection()
+        if DemoData.isEnabled {
+            // Demo mode: fictional servers, no SSH calls — used for screenshots
+            self.configurations = DemoData.configurations
+            self.selectedServerID = DemoData.productionServerID
+            self.hiddenProjectIDs = [:]
+            for cfg in DemoData.configurations {
+                let snap = DemoData.snapshot(for: cfg.id)
+                self.snapshots[cfg.id] = snap
+                self.loadStates[cfg.id] = .loaded(snap)
+                self.metricHistory[cfg.id] = Self.demoHistory(for: snap)
+            }
+        } else {
+            self.configurations = Self.loadConfigurations(from: defaults)
+            self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
+            self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
+            normalizeSelection()
+        }
+    }
+
+    private static func demoHistory(for snapshot: ServerSnapshot) -> [MetricSample] {
+        // Build a 25-point history that ends at the current snapshot
+        let base = Double(snapshot.cpuUsagePercent)
+        let memBase = snapshot.memoryTotalBytes > 0
+            ? Double(snapshot.memoryUsedBytes) / Double(snapshot.memoryTotalBytes) * 100 : 0
+        let diskBase = snapshot.diskTotalBytes > 0
+            ? (1.0 - Double(snapshot.diskFreeBytes) / Double(snapshot.diskTotalBytes)) * 100 : 0
+        return (0..<25).map { i -> MetricSample in
+            let jitter = Double((i * 7) % 11 - 5) * 0.6
+            return MetricSample(
+                timestamp: Date().addingTimeInterval(Double(-30 * (25 - i))),
+                cpuPercent: max(0, base + jitter * 1.5),
+                memoryPercent: max(0, memBase + jitter * 0.4),
+                diskUsedPercent: max(0, diskBase + jitter * 0.05)
+            )
+        }
     }
 
     public var selectedConfiguration: MonitorConfiguration? {
@@ -120,6 +151,7 @@ public final class MonitorStore: ObservableObject {
 
     public func start() {
         guard !pollingStarted else { return }
+        guard !DemoData.isEnabled else { return }  // demo mode: no polling
         pollingStarted = true
         reconcilePollingTasks()
     }
@@ -278,12 +310,14 @@ public final class MonitorStore: ObservableObject {
     }
 
     private func saveConfigurations() {
+        guard !DemoData.isEnabled else { return }  // don't overwrite real settings
         guard let data = try? JSONEncoder().encode(configurations) else { return }
         let defaults = UserDefaults.standard
         defaults.set(data, forKey: "monitor.configurations")
     }
 
     private func saveSelectedServerID() {
+        guard !DemoData.isEnabled else { return }  // don't overwrite real selection
         UserDefaults.standard.set(selectedServerID?.uuidString, forKey: "monitor.selectedServerID")
     }
 
