@@ -3,7 +3,7 @@ import SwiftUI
 
 struct AboutView: View {
     // MARK: - Contact links (edit to match your accounts)
-    private let telegramURL  = URL(string: "https://t.me/your_username")!   // ← замените на свой @username
+    private let telegramURL  = URL(string: "https://t.me/thealexpm")!
     private let githubURL    = URL(string: "https://github.com/thealexpm/VPSMonitor")!
 
     var body: some View {

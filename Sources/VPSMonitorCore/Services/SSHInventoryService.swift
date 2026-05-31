@@ -5,11 +5,14 @@ public struct SSHInventoryService: Sendable {
 
     public func fetch(configuration: MonitorConfiguration) async throws -> ServerSnapshot {
         let startedAt = Date()
-        let output = try await runSSH(configuration: configuration)
+        let output: String
+        switch configuration.authMethod {
+        case .sshKey:     output = try await runSSHWithKey(configuration: configuration)
+        case .password:   output = try await runSSHWithPassword(configuration: configuration)
+        }
         let responseTime = Date().timeIntervalSince(startedAt)
         let inventory = RemoteInventoryParser.parse(output)
         let projects = ProjectInventoryBuilder.build(from: inventory)
-
         return ServerSnapshot(
             hostName: inventory.hostName.isEmpty ? configuration.host : inventory.hostName,
             checkedAt: Date(),
@@ -28,14 +31,13 @@ public struct SSHInventoryService: Sendable {
         )
     }
 
-    private func runSSH(configuration: MonitorConfiguration) async throws -> String {
+    // MARK: - Key-based auth (existing behaviour, unchanged)
+
+    private func runSSHWithKey(configuration: MonitorConfiguration) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
-                let standardOutput = Pipe()
-                let standardError = Pipe()
-                let standardInput = Pipe()
-
+                let stdout = Pipe(); let stderr = Pipe(); let stdin = Pipe()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
                 process.arguments = [
                     "-o", "BatchMode=yes",
@@ -43,29 +45,97 @@ public struct SSHInventoryService: Sendable {
                     "\(configuration.user)@\(configuration.host)",
                     "bash -s"
                 ]
-                process.standardOutput = standardOutput
-                process.standardError = standardError
-                process.standardInput = standardInput
-
+                process.standardOutput = stdout
+                process.standardError = stderr
+                process.standardInput = stdin
                 do {
                     try process.run()
-                    standardInput.fileHandleForWriting.write(Data(Self.remoteScript.utf8))
-                    try standardInput.fileHandleForWriting.close()
-
-                    let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
+                    stdin.fileHandleForWriting.write(Data(Self.remoteScript.utf8))
+                    try stdin.fileHandleForWriting.close()
+                    let out = stdout.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
-                    let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+                    let err = stderr.fileHandleForReading.readDataToEndOfFile()
                     guard process.terminationStatus == 0 else {
-                        let message = String(data: errorData, encoding: .utf8) ?? "SSH connection failed"
-                        throw SSHInventoryError.connectionFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                        let msg = String(data: err, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        continuation.resume(throwing: SSHInventoryError.connectionFailed(msg))
+                        return
                     }
-                    continuation.resume(returning: String(data: outputData, encoding: .utf8) ?? "")
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+                    continuation.resume(returning: String(data: out, encoding: .utf8) ?? "")
+                } catch { continuation.resume(throwing: error) }
             }
         }
     }
+
+    // MARK: - Password-based auth via SSH_ASKPASS
+
+    private func runSSHWithPassword(configuration: MonitorConfiguration) async throws -> String {
+        guard let password = KeychainService.loadPassword(for: configuration.id), !password.isEmpty else {
+            throw SSHInventoryError.noPasswordStored
+        }
+
+        // Encode each byte as \xNN so any character is safely embedded in a printf format string
+        let hexPw = password.unicodeScalars
+            .map { String(format: "\\x%02x", $0.value) }
+            .joined()
+        let askpassContent = "#!/bin/sh\nprintf '\(hexPw)'\n"
+
+        let askpassURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vpsm_\(UUID().uuidString.prefix(8)).sh")
+        try askpassContent.write(to: askpassURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                              ofItemAtPath: askpassURL.path)
+        defer { try? FileManager.default.removeItem(at: askpassURL) }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let process = Process()
+                let stdout = Pipe(); let stderr = Pipe(); let stdin = Pipe()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+                process.arguments = [
+                    "-o", "BatchMode=no",
+                    "-o", "ConnectTimeout=10",
+                    "-o", "PreferredAuthentications=password",
+                    "-o", "PubkeyAuthentication=no",
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "NumberOfPasswordPrompts=1",
+                    "\(configuration.user)@\(configuration.host)",
+                    "bash -s"
+                ]
+                process.environment = [
+                    // SSH_ASKPASS_REQUIRE=force: use askpass even without a controlling terminal
+                    // Supported by OpenSSH 8.4+ (macOS 13+ ships ≥ 9.0)
+                    "SSH_ASKPASS":         askpassURL.path,
+                    "SSH_ASKPASS_REQUIRE": "force",
+                    "DISPLAY":            ":0",          // fallback for older SSH builds
+                    "HOME":               NSHomeDirectory(),
+                    "PATH":               "/usr/bin:/bin:/usr/sbin:/sbin"
+                ]
+                process.standardOutput = stdout
+                process.standardError = stderr
+                process.standardInput = stdin
+                do {
+                    try process.run()
+                    stdin.fileHandleForWriting.write(Data(Self.remoteScript.utf8))
+                    try stdin.fileHandleForWriting.close()
+                    let out = stdout.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    let err = stderr.fileHandleForReading.readDataToEndOfFile()
+                    guard process.terminationStatus == 0 else {
+                        let msg = String(data: err, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        continuation.resume(throwing: SSHInventoryError.connectionFailed(
+                            msg.isEmpty ? "Ошибка подключения. Проверьте логин и пароль." : msg
+                        ))
+                        return
+                    }
+                    continuation.resume(returning: String(data: out, encoding: .utf8) ?? "")
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    // MARK: - Remote script (read-only, exits cleanly)
 
     private static let remoteScript = #"""
 set -u
@@ -136,11 +206,14 @@ fi
 
 public enum SSHInventoryError: LocalizedError {
     case connectionFailed(String)
+    case noPasswordStored
 
     public var errorDescription: String? {
         switch self {
-        case .connectionFailed(let message):
-            message.isEmpty ? "Не удалось подключиться к VPS по SSH." : message
+        case .connectionFailed(let msg):
+            msg.isEmpty ? "Не удалось подключиться к VPS по SSH." : msg
+        case .noPasswordStored:
+            "Пароль не сохранён. Откройте Настройки и введите пароль для этого сервера."
         }
     }
 }

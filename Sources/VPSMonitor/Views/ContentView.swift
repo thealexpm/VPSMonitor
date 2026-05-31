@@ -35,11 +35,12 @@ struct ContentView: View {
                         description: Text(message)
                     )
                 default:
-                    if let snapshot = store.selectedSnapshot {
+                    if let snapshot = store.selectedSnapshot,
+                       let serverID = store.selectedConfiguration?.id {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 ResourceGrid(snapshot: snapshot, history: store.selectedMetricHistory)
-                                ProjectListView(projects: snapshot.projects)
+                                ProjectListView(serverID: serverID, store: store)
                                 discoveryNote(snapshot: snapshot)
                             }
                             .padding(.bottom, 8)

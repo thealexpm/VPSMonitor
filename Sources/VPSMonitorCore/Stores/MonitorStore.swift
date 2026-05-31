@@ -23,6 +23,10 @@ public final class MonitorStore: ObservableObject {
     @Published public private(set) var loadStates: [UUID: LoadState] = [:]
     @Published public private(set) var snapshots: [UUID: ServerSnapshot] = [:]
     @Published public private(set) var metricHistory: [UUID: [MetricSample]] = [:]
+    /// Project IDs the user chose to hide, per server. Persisted.
+    @Published public private(set) var hiddenProjectIDs: [UUID: Set<String>] = [:]
+    /// Project IDs that appeared since the previous poll, per server. Session-only.
+    @Published public private(set) var newProjectIDs: [UUID: Set<String>] = [:]
 
     private let inventoryService: SSHInventoryService
     private var pollingTasks: [UUID: Task<Void, Never>] = [:]
@@ -33,6 +37,7 @@ public final class MonitorStore: ObservableObject {
         let defaults = UserDefaults.standard
         self.configurations = Self.loadConfigurations(from: defaults)
         self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
+        self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
         normalizeSelection()
     }
 
@@ -57,6 +62,43 @@ public final class MonitorStore: ObservableObject {
 
     public func metricHistory(for serverID: UUID) -> [MetricSample] {
         metricHistory[serverID] ?? []
+    }
+
+    // MARK: - Project filtering
+
+    /// All projects discovered on a server (including hidden ones).
+    public func allProjects(for serverID: UUID) -> [DetectedProject] {
+        snapshots[serverID]?.projects ?? []
+    }
+
+    /// Projects the user has chosen to display (hidden ones excluded).
+    public func visibleProjects(for serverID: UUID) -> [DetectedProject] {
+        let hidden = hiddenProjectIDs[serverID] ?? []
+        return allProjects(for: serverID).filter { !hidden.contains($0.id) }
+    }
+
+    public func isHidden(_ projectID: String, serverID: UUID) -> Bool {
+        hiddenProjectIDs[serverID]?.contains(projectID) ?? false
+    }
+
+    public func isNew(_ projectID: String, serverID: UUID) -> Bool {
+        newProjectIDs[serverID]?.contains(projectID) ?? false
+    }
+
+    public func hiddenCount(for serverID: UUID) -> Int {
+        hiddenProjectIDs[serverID]?.count ?? 0
+    }
+
+    public func setProjectHidden(_ hidden: Bool, projectID: String, serverID: UUID) {
+        var ids = hiddenProjectIDs[serverID] ?? []
+        if hidden { ids.insert(projectID) } else { ids.remove(projectID) }
+        hiddenProjectIDs[serverID] = ids
+        saveHiddenProjectIDs()
+    }
+
+    /// Clear the "new" badges for a server (called when the user opens the filter view).
+    public func clearNewProjects(serverID: UUID) {
+        newProjectIDs[serverID] = []
     }
 
     public var menuTitle: String {
@@ -103,6 +145,15 @@ public final class MonitorStore: ObservableObject {
                 let prevRunning = Set(prev.projects.filter { $0.state == .running }.map(\.name))
                 for project in snapshot.projects where project.state == .stopped && prevRunning.contains(project.name) {
                     NotificationService.sendServiceStopped(serviceName: project.name, serverName: configuration.name)
+                }
+            }
+
+            // Detect newly appeared projects (only when a previous snapshot exists)
+            if let prev = previousSnapshot {
+                let prevIDs = Set(prev.projects.map(\.id))
+                let appearedIDs = Set(snapshot.projects.map(\.id)).subtracting(prevIDs)
+                if !appearedIDs.isEmpty {
+                    newProjectIDs[serverID] = (newProjectIDs[serverID] ?? []).union(appearedIDs)
                 }
             }
 
@@ -157,7 +208,11 @@ public final class MonitorStore: ObservableObject {
             loadStates[id] = nil
             snapshots[id] = nil
             metricHistory[id] = nil
+            hiddenProjectIDs[id] = nil
+            newProjectIDs[id] = nil
+            KeychainService.deletePassword(for: id)   // clean up stored password if any
         }
+        saveHiddenProjectIDs()
     }
 
     public func removeServer(id: UUID) {
@@ -230,6 +285,24 @@ public final class MonitorStore: ObservableObject {
 
     private func saveSelectedServerID() {
         UserDefaults.standard.set(selectedServerID?.uuidString, forKey: "monitor.selectedServerID")
+    }
+
+    private func saveHiddenProjectIDs() {
+        let defaults = UserDefaults.standard
+        let dict = hiddenProjectIDs.reduce(into: [String: [String]]()) { out, pair in
+            out[pair.key.uuidString] = Array(pair.value)
+        }
+        defaults.set(dict, forKey: "monitor.hiddenProjectIDs")
+    }
+
+    private static func loadHiddenProjectIDs(from defaults: UserDefaults) -> [UUID: Set<String>] {
+        guard let dict = defaults.dictionary(forKey: "monitor.hiddenProjectIDs")
+                as? [String: [String]] else { return [:] }
+        return dict.reduce(into: [:]) { out, pair in
+            if let uuid = UUID(uuidString: pair.key) {
+                out[uuid] = Set(pair.value)
+            }
+        }
     }
 
     private static func loadConfigurations(from defaults: UserDefaults) -> [MonitorConfiguration] {
