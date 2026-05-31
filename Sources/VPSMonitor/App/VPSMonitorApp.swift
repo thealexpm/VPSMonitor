@@ -22,11 +22,9 @@ struct VPSMonitorApp: App {
                 .task { store.start() }
         }
         .commands {
-            // Replace the default empty "About VPSMonitor" with our own
+            // Use a View struct so @Environment(\.openWindow) is available
             CommandGroup(replacing: .appInfo) {
-                Button("О программе VPSMonitor") {
-                    showAboutPanel()
-                }
+                AboutMenuCommand()
             }
         }
 
@@ -46,7 +44,7 @@ struct VPSMonitorApp: App {
         }
     }
 
-    // MARK: - About panel
+    // MARK: - About panel (fallback, used if openWindow not available)
 
     private func showAboutPanel() {
         let body = """
@@ -92,5 +90,18 @@ struct VPSMonitorApp: App {
             .version:            "" as NSString,
             .credits:            credits
         ])
+    }
+}
+
+// MARK: - About menu command
+// Needs to be a View so it can use @Environment(\.openWindow)
+private struct AboutMenuCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("О программе VPSMonitor") {
+            openWindow(id: "about")
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }

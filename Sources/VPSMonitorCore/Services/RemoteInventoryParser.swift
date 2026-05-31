@@ -30,6 +30,15 @@ public enum RemoteInventoryParser {
             case "DIRECTORY" where fields.count >= 2:
                 inventory.directories.append(decode(fields[1]))
             case "SERVICE" where fields.count >= 7:
+                // Field layout (SERVICE is fields[0]):
+                // [1] id  [2] desc  [3] activeState  [4] subState
+                // [5] workDir  [6] fragmentPath  [7] restarts
+                // [8] cpu×100 (integer)  [9] memKB  (added in later version)
+                let hasFragment  = fields.count >= 8
+                let fragmentPath = hasFragment ? decode(fields[6]) : ""
+                let restartCount = Int(hasFragment ? fields[7] : fields[6]) ?? 0
+                let cpuPercent   = fields.count >= 9 ? (Double(fields[8]) ?? 0) / 100.0 : 0
+                let memoryBytes  = fields.count >= 10 ? (Int64(fields[9]) ?? 0) * 1024 : 0
                 inventory.services.append(
                     RemoteService(
                         name: decode(fields[1]),
@@ -37,8 +46,10 @@ public enum RemoteInventoryParser {
                         activeState: decode(fields[3]),
                         subState: decode(fields[4]),
                         workingDirectory: decode(fields[5]),
-                        fragmentPath: fields.count >= 8 ? decode(fields[6]) : "",
-                        restartCount: Int(fields.count >= 8 ? fields[7] : fields[6]) ?? 0
+                        fragmentPath: fragmentPath,
+                        restartCount: restartCount,
+                        cpuPercent: cpuPercent,
+                        memoryBytes: memoryBytes
                     )
                 )
             default:

@@ -85,7 +85,8 @@ struct AboutView: View {
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 20)
         }
-        .frame(width: 460)
+        .frame(width: 480)
+        .fixedSize()          // let the window size to content — no clipping, no scroll
     }
 }
 

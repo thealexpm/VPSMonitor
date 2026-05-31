@@ -201,16 +201,27 @@ done
   while IFS= read -r unit; do
     [ -n "$unit" ] || continue
     properties="$(systemctl show "$unit" --no-pager \
-      -p Id -p Description -p ActiveState -p SubState -p WorkingDirectory -p FragmentPath -p NRestarts)"
-    id="$(printf '%s\n' "$properties" | sed -n 's/^Id=//p')"
+      -p Id -p Description -p ActiveState -p SubState \
+      -p WorkingDirectory -p FragmentPath -p NRestarts -p MainPID)"
+    id="$(printf '%s\n' "$properties"        | sed -n 's/^Id=//p')"
     description="$(printf '%s\n' "$properties" | sed -n 's/^Description=//p')"
-    active="$(printf '%s\n' "$properties" | sed -n 's/^ActiveState=//p')"
-    sub="$(printf '%s\n' "$properties" | sed -n 's/^SubState=//p')"
+    active="$(printf '%s\n' "$properties"    | sed -n 's/^ActiveState=//p')"
+    sub="$(printf '%s\n' "$properties"       | sed -n 's/^SubState=//p')"
     directory="$(printf '%s\n' "$properties" | sed -n 's/^WorkingDirectory=//p')"
-    fragment="$(printf '%s\n' "$properties" | sed -n 's/^FragmentPath=//p')"
-    restarts="$(printf '%s\n' "$properties" | sed -n 's/^NRestarts=//p')"
+    fragment="$(printf '%s\n' "$properties"  | sed -n 's/^FragmentPath=//p')"
+    restarts="$(printf '%s\n' "$properties"  | sed -n 's/^NRestarts=//p')"
+    pid="$(printf '%s\n' "$properties"       | sed -n 's/^MainPID=//p')"
+    cpu_x100=0; mem_kb=0
+    if [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+      _ps="$(ps -p "$pid" -o %cpu= -o rss= 2>/dev/null)"
+      if [ -n "$_ps" ]; then
+        cpu_x100="$(printf '%s\n' "$_ps" | awk '{printf "%d", $1 * 100 + 0.5}')"
+        mem_kb="$(printf '%s\n' "$_ps"   | awk '{print int($2)}')"
+      fi
+    fi
     emit SERVICE "$(b64 "$id")" "$(b64 "$description")" "$(b64 "$active")" \
-      "$(b64 "$sub")" "$(b64 "$directory")" "$(b64 "$fragment")" "${restarts:-0}"
+      "$(b64 "$sub")" "$(b64 "$directory")" "$(b64 "$fragment")" \
+      "${restarts:-0}" "${cpu_x100:-0}" "${mem_kb:-0}"
   done
 """#
 }

@@ -70,6 +70,10 @@ public struct RemoteService: Hashable, Sendable {
     public let workingDirectory: String
     public let fragmentPath: String
     public let restartCount: Int
+    /// CPU usage averaged since the process started (from `ps %cpu`)
+    public let cpuPercent: Double
+    /// RSS memory of the main process
+    public let memoryBytes: Int64
 
     public init(
         name: String,
@@ -78,7 +82,9 @@ public struct RemoteService: Hashable, Sendable {
         subState: String,
         workingDirectory: String,
         fragmentPath: String = "",
-        restartCount: Int
+        restartCount: Int,
+        cpuPercent: Double = 0,
+        memoryBytes: Int64 = 0
     ) {
         self.name = name
         self.description = description
@@ -87,9 +93,18 @@ public struct RemoteService: Hashable, Sendable {
         self.workingDirectory = workingDirectory
         self.fragmentPath = fragmentPath
         self.restartCount = restartCount
+        self.cpuPercent = cpuPercent
+        self.memoryBytes = memoryBytes
     }
 
     public var isRunning: Bool {
         activeState == "active" && subState == "running"
     }
+}
+
+extension DetectedProject {
+    /// Sum of CPU% across all services in this project
+    public var totalCPUPercent: Double { services.reduce(0) { $0 + $1.cpuPercent } }
+    /// Sum of RSS memory across all services in this project
+    public var totalMemoryBytes: Int64 { services.reduce(0) { $0 + $1.memoryBytes } }
 }
