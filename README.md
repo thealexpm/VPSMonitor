@@ -104,6 +104,18 @@ ssh user@your.server.address "echo ok"
 
 If you see `ok`, the app will connect. If you'd rather not use keys — add the server in Settings with **Подключение → Логин и пароль** and store credentials in macOS Keychain.
 
+### Connect with IP, login and password
+
+An SSH key is optional. You can connect a server manually without editing `~/.ssh/config`:
+
+1. Open **Settings** and add a new VPS
+2. Enter the server IP address or hostname
+3. Enter the SSH login
+4. Select **Подключение → Логин и пароль**
+5. Enter the password — VPSMonitor stores it securely in macOS Keychain
+
+The app still uses the standard SSH protocol under the hood, but no preconfigured SSH key is required.
+
 For non-standard ports add a Host block to `~/.ssh/config`:
 
 ```
@@ -225,6 +237,18 @@ ssh user@your.server.address "echo ok"
 ```
 
 Если выводит `ok` — приложение тоже подключится. Если не хочется ключ — в настройках выберите **Подключение → Логин и пароль**, пароль сохранится в Связке ключей.
+
+### Подключение по IP, логину и паролю
+
+SSH-ключ необязателен. Сервер можно подключить вручную без настройки `~/.ssh/config`:
+
+1. Откройте **Настройки** и добавьте новый VPS
+2. Укажите IP-адрес или hostname сервера
+3. Укажите логин SSH
+4. Выберите **Подключение → Логин и пароль**
+5. Введите пароль — VPSMonitor безопасно сохранит его в Связке ключей macOS
+
+Внутри приложение по-прежнему использует стандартный протокол SSH, но заранее настроенный SSH-ключ не требуется.
 
 Для нестандартного порта добавьте блок в `~/.ssh/config`:
 
