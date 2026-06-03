@@ -13,7 +13,7 @@
 
 [English](#english) · [Русский](#русский) · [Download](https://github.com/thealexpm/VPSMonitor/releases) · [Support](https://t.me/thealexpm)
 
-<img src="Resources/screenshots/01-dashboard.png" width="640" alt="Dashboard"/>
+<img src="Resources/screenshots/01-dashboard-en.png" width="640" alt="Dashboard"/>
 
 </div>
 
@@ -43,31 +43,31 @@ VPSMonitor lives in your menu bar and shows live state of your Linux servers in 
 
 <table>
   <tr>
-    <td><img src="Resources/screenshots/02-projects.png" alt="Projects with per-service CPU and RAM"/></td>
-    <td><img src="Resources/screenshots/06-staging-warning.png" alt="Server with a stopped service"/></td>
+    <td><img src="Resources/screenshots/02-projects-en.png" alt="Projects with per-service CPU and RAM"/></td>
+    <td><img src="Resources/screenshots/06-staging-warning-en.png" alt="Server with a stopped service"/></td>
   </tr>
   <tr>
     <td align="center"><sub>Per-service CPU and RAM, project paths, statuses</sub></td>
     <td align="center"><sub>Stopped service surfaces a clear warning</sub></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/03-settings.png" alt="Settings: add/edit/delete servers"/></td>
-    <td><img src="Resources/screenshots/05-filter.png" alt="Project visibility filter"/></td>
+    <td><img src="Resources/screenshots/03-settings-en.png" alt="Settings: add/edit/delete servers"/></td>
+    <td><img src="Resources/screenshots/05-filter-en.png" alt="Project visibility filter"/></td>
   </tr>
   <tr>
     <td align="center"><sub>Add/edit/delete servers, SSH key or password</sub></td>
     <td align="center"><sub>Hide what you don't want to see on the dashboard</sub></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/08-edit.png" alt="Edit server modal"/></td>
-    <td><img src="Resources/screenshots/07-menu-bar.png" alt="Menu bar widget"/></td>
+    <td><img src="Resources/screenshots/08-edit-en.png" alt="Edit server modal"/></td>
+    <td><img src="Resources/screenshots/07-menu-bar-en.png" alt="Menu bar widget"/></td>
   </tr>
   <tr>
     <td align="center"><sub>Edit server details in a focused sheet</sub></td>
     <td align="center"><sub>Menu bar: all servers at a glance</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="Resources/screenshots/04-about.png" alt="About window" width="50%"/></td>
+    <td colspan="2" align="center"><img src="Resources/screenshots/04-about-en.png" alt="About window" width="50%"/></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><sub>About window — automatically switches between English and Russian based on system language</sub></td>
