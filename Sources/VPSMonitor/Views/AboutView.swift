@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import VPSMonitorCore
 
 struct AboutView: View {
     private let telegramURL = URL(string: "https://t.me/thealexpm")!
@@ -81,9 +82,7 @@ private struct AboutStrings {
     /// Returns the Russian variant only when the user's preferred language is Russian.
     /// Any other locale (English, Spanish, German, …) falls back to English.
     static var current: AboutStrings {
-        let preferred = Locale.preferredLanguages.first ?? "en"
-        let langCode  = Locale(identifier: preferred).language.languageCode?.identifier ?? "en"
-        return langCode == "ru" ? .russian : .english
+        L10n.isRussian ? .russian : .english
     }
 
     static let russian = AboutStrings(

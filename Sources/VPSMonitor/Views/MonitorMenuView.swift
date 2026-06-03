@@ -35,16 +35,16 @@ struct MonitorMenuView: View {
 
         Divider()
 
-        Button("Открыть монитор") {
+        Button(L10n.text("Открыть монитор", "Open monitor")) {
             openWindow(id: "dashboard")
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Проверить сейчас") {
+        Button(L10n.text("Проверить сейчас", "Check now")) {
             store.refreshAll()
         }
         Button(updateChecker.availableUpdate != nil
-               ? "Доступно обновление"
-               : "Проверить обновления") {
+               ? L10n.text("Доступно обновление", "Update available")
+               : L10n.text("Проверить обновления", "Check for updates")) {
             updateChecker.checkInBackground()
             if updateChecker.availableUpdate != nil {
                 openWindow(id: "dashboard")
@@ -55,13 +55,13 @@ struct MonitorMenuView: View {
         Divider()
 
         SettingsLink {
-            Text("Настройки")
+            Text(L10n.text("Настройки", "Settings"))
         }
-        Button("О программе") {
+        Button(L10n.text("О программе", "About")) {
             openWindow(id: "about")
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Завершить работу") {
+        Button(L10n.text("Завершить работу", "Quit")) {
             NSApplication.shared.terminate(nil)
         }
     }

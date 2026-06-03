@@ -133,9 +133,14 @@ public final class MonitorStore: ObservableObject {
     }
 
     public var menuTitle: String {
-        guard !configurations.isEmpty else { return "VPS: не настроены" }
+        guard !configurations.isEmpty else {
+            return L10n.text("VPS: не настроены", "VPS: not configured")
+        }
         let healthyCount = configurations.filter { isHealthy(serverID: $0.id) }.count
-        return "VPS: \(healthyCount)/\(configurations.count) доступно"
+        return L10n.text(
+            "VPS: \(healthyCount)/\(configurations.count) доступно",
+            "VPS: \(healthyCount)/\(configurations.count) available"
+        )
     }
 
     public var menuSystemImage: String {

@@ -64,9 +64,7 @@ private struct UpdateStrings {
     }
 
     static var current: UpdateStrings {
-        let preferred = Locale.preferredLanguages.first ?? "en"
-        let code = Locale(identifier: preferred).language.languageCode?.identifier ?? "en"
-        return code == "ru" ? .russian : .english
+        L10n.isRussian ? .russian : .english
     }
 
     static let russian = UpdateStrings(

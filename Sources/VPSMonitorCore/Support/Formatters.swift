@@ -9,13 +9,13 @@ public enum MonitorFormatters {
         let days = seconds / 86_400
         let hours = (seconds % 86_400) / 3_600
         if days > 0 {
-            return "\(days) дн. \(hours) ч."
+            return L10n.text("\(days) дн. \(hours) ч.", "\(days)d \(hours)h")
         }
         let minutes = (seconds % 3_600) / 60
-        return "\(hours) ч. \(minutes) мин."
+        return L10n.text("\(hours) ч. \(minutes) мин.", "\(hours)h \(minutes)m")
     }
 
     public static func milliseconds(_ interval: TimeInterval) -> String {
-        "\(Int(interval * 1_000)) мс"
+        L10n.text("\(Int(interval * 1_000)) мс", "\(Int(interval * 1_000)) ms")
     }
 }

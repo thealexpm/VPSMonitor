@@ -12,9 +12,12 @@ struct ProjectFilterView: View {
 
             // ── Header ────────────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 4) {
-                Text("Проекты: \(serverName)")
+                Text(L10n.text("Проекты: \(serverName)", "Projects: \(serverName)"))
                     .font(.title2.bold())
-                Text("Включайте и отключайте то, что хотите видеть на дашборде.")
+                Text(L10n.text(
+                    "Включайте и отключайте то, что хотите видеть на дашборде.",
+                    "Choose which items you want to see on the dashboard."
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -28,9 +31,12 @@ struct ProjectFilterView: View {
 
             if projects.isEmpty {
                 ContentUnavailableView(
-                    "Проекты не обнаружены",
+                    L10n.text("Проекты не обнаружены", "No projects detected"),
                     systemImage: "folder",
-                    description: Text("Данные появятся после первого успешного опроса сервера.")
+                    description: Text(L10n.text(
+                        "Данные появятся после первого успешного опроса сервера.",
+                        "Data will appear after the first successful server check."
+                    ))
                 )
                 .frame(minHeight: 200)
             } else {
@@ -41,7 +47,10 @@ struct ProjectFilterView: View {
                         let restOnes  = projects.filter { !store.isNew($0.id, serverID: serverID) }
 
                         if !newOnes.isEmpty {
-                            sectionHeader("Новые — появились с последнего запуска")
+                            sectionHeader(L10n.text(
+                                "Новые — появились с последнего запуска",
+                                "New — appeared since the last launch"
+                            ))
                             ForEach(newOnes) { project in
                                 FilterRow(
                                     project: project,
@@ -54,7 +63,7 @@ struct ProjectFilterView: View {
                             }
                         }
 
-                        sectionHeader("Все проекты")
+                        sectionHeader(L10n.text("Все проекты", "All projects"))
                         ForEach(restOnes) { project in
                             FilterRow(
                                 project: project,
@@ -76,7 +85,10 @@ struct ProjectFilterView: View {
             HStack {
                 let newCount = store.newProjectIDs[serverID]?.count ?? 0
                 if newCount > 0 {
-                    Button("Сбросить \(newCount) значка «Новый»") {
+                    Button(L10n.text(
+                        "Сбросить \(newCount) значка «Новый»",
+                        "Clear \(newCount) “New” badges"
+                    )) {
                         store.clearNewProjects(serverID: serverID)
                     }
                     .foregroundStyle(.secondary)
@@ -85,11 +97,11 @@ struct ProjectFilterView: View {
                 Spacer()
                 let hidden = store.hiddenCount(for: serverID)
                 if hidden > 0 {
-                    Text("Скрыто: \(hidden)")
+                    Text(L10n.text("Скрыто: \(hidden)", "Hidden: \(hidden)"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
-                Button("Готово") { dismiss() }
+                Button(L10n.text("Готово", "Done")) { dismiss() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return)
             }
@@ -131,7 +143,7 @@ private struct FilterRow: View {
                     Text(project.name)
                         .fontWeight(.medium)
                     if isNew {
-                        Text("НОВЫЙ")
+                        Text(L10n.text("НОВЫЙ", "NEW"))
                             .font(.caption2.bold())
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
@@ -156,7 +168,9 @@ private struct FilterRow: View {
                     .foregroundStyle(isHidden ? .secondary : .primary)
             }
             .buttonStyle(.borderless)
-            .help(isHidden ? "Показать на дашборде" : "Скрыть с дашборда")
+            .help(isHidden
+                ? L10n.text("Показать на дашборде", "Show on dashboard")
+                : L10n.text("Скрыть с дашборда", "Hide from dashboard"))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

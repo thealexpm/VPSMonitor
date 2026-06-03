@@ -32,7 +32,7 @@ struct VPSMonitorApp: App {
             }
         }
 
-        WindowGroup("О программе", id: "about") {
+        WindowGroup(L10n.text("О программе", "About"), id: "about") {
             AboutView()
         }
         .windowResizability(.contentSize)
@@ -51,14 +51,24 @@ struct VPSMonitorApp: App {
     // MARK: - About panel (fallback, used if openWindow not available)
 
     private func showAboutPanel() {
-        let body = """
+        let body = L10n.text(
+            """
             Нативный macOS-монитор для Linux VPS-серверов через SSH.
             Без агентов, без облака — только SSH и ваши ключи.
 
             Подключается по SSH, запускает read-only bash-скрипт \
             и показывает CPU, RAM, диск, аптайм и список проектов \
             прямо в menu bar.
+            """,
             """
+            A native macOS monitor for Linux VPS servers over SSH.
+            No agents, no cloud — just SSH and your credentials.
+
+            Connects over SSH, runs a read-only bash script, \
+            and shows CPU, RAM, disk, uptime and projects \
+            directly in the menu bar.
+            """
+        )
 
         let credits = NSMutableAttributedString(
             string: body,
@@ -68,7 +78,10 @@ struct VPSMonitorApp: App {
             ]
         )
 
-        let linksStr = "\n\nПоддержка: @thealexpm  ·  GitHub: thealexpm/VPSMonitor"
+        let linksStr = L10n.text(
+            "\n\nПоддержка: @thealexpm  ·  GitHub: thealexpm/VPSMonitor",
+            "\n\nSupport: @thealexpm  ·  GitHub: thealexpm/VPSMonitor"
+        )
         let links = NSMutableAttributedString(
             string: linksStr,
             attributes: [
@@ -103,7 +116,7 @@ private struct AboutMenuCommand: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("О программе VPSMonitor") {
+        Button(L10n.text("О программе VPSMonitor", "About VPSMonitor")) {
             openWindow(id: "about")
             NSApp.activate(ignoringOtherApps: true)
         }

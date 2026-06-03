@@ -32,13 +32,16 @@ struct ContentView: View {
                 case .waiting where store.selectedSnapshot == nil,
                      .refreshing where store.selectedSnapshot == nil:
                     ContentUnavailableView(
-                        "Проверяю VPS",
+                        L10n.text("Проверяю VPS", "Checking VPS"),
                         systemImage: "server.rack",
-                        description: Text("Получаю список проектов и показатели сервера по SSH.")
+                        description: Text(L10n.text(
+                            "Получаю список проектов и показатели сервера по SSH.",
+                            "Fetching projects and server metrics over SSH."
+                        ))
                     )
                 case .failed(let message) where store.selectedSnapshot == nil:
                     ContentUnavailableView(
-                        "VPS недоступен",
+                        L10n.text("VPS недоступен", "VPS unavailable"),
                         systemImage: "exclamationmark.triangle",
                         description: Text(message)
                     )
@@ -63,7 +66,7 @@ struct ContentView: View {
                 Button {
                     Task { await store.refreshSelectedServer() }
                 } label: {
-                    Label("Проверить сейчас", systemImage: "arrow.clockwise")
+                    Label(L10n.text("Проверить сейчас", "Check now"), systemImage: "arrow.clockwise")
                 }
                 .disabled(isRefreshing)
             }
@@ -73,9 +76,12 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(store.selectedConfiguration?.name ?? "VPS не настроены")
+                Text(store.selectedConfiguration?.name ?? L10n.text("VPS не настроены", "VPS not configured"))
                     .font(.largeTitle.bold())
-                Text(store.selectedConfiguration?.host ?? "Добавьте сервер в настройках")
+                Text(store.selectedConfiguration?.host ?? L10n.text(
+                    "Добавьте сервер в настройках",
+                    "Add a server in Settings"
+                ))
                     .foregroundStyle(.secondary)
             }
 
@@ -87,12 +93,12 @@ struct ContentView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("Нет серверов", systemImage: "server.rack")
+            Label(L10n.text("Нет серверов", "No servers"), systemImage: "server.rack")
         } description: {
-            Text("Откройте Настройки и добавьте первый VPS.")
+            Text(L10n.text("Откройте Настройки и добавьте первый VPS.", "Open Settings and add your first VPS."))
         } actions: {
             SettingsLink {
-                Label("Открыть настройки", systemImage: "gear")
+                Label(L10n.text("Открыть настройки", "Open Settings"), systemImage: "gear")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -105,9 +111,12 @@ struct ContentView: View {
 
     private func discoveryNote(snapshot: ServerSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Как формируется список", systemImage: "magnifyingglass")
+            Label(L10n.text("Как формируется список", "How the list is built"), systemImage: "magnifyingglass")
                 .font(.headline)
-            Text("Приложение сканирует /opt, /var/www, /srv, /app, /home/* и другие директории, а также все активные systemd-службы. Нажмите «Настроить» чтобы скрыть ненужные пункты.")
+            Text(L10n.text(
+                "Приложение сканирует /opt, /var/www, /srv, /app, /home/* и другие директории, а также все активные systemd-службы. Нажмите «Настроить» чтобы скрыть ненужные пункты.",
+                "The app scans /opt, /var/www, /srv, /app, /home/* and other directories, plus all active systemd services. Click “Configure” to hide items you do not need."
+            ))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -135,7 +144,7 @@ private struct ServerSidebarView: View {
             .tag(configuration.id)
         }
         .listStyle(.sidebar)
-        .navigationTitle("Серверы")
+        .navigationTitle(L10n.text("Серверы", "Servers"))
     }
 
     private func icon(for id: UUID) -> String {
@@ -169,13 +178,13 @@ private struct StatusBadge: View {
 
     private var title: String {
         switch state {
-        case .waiting: "Ожидание проверки"
-        case .refreshing: "Проверяю"
-        case .failed: "Нет подключения"
+        case .waiting: L10n.text("Ожидание проверки", "Waiting for check")
+        case .refreshing: L10n.text("Проверяю", "Checking")
+        case .failed: L10n.text("Нет подключения", "No connection")
         case .loaded(let snapshot):
             snapshot.projects.contains(where: { $0.state == .stopped })
-                ? "Нужно внимание"
-                : "Всё работает"
+                ? L10n.text("Нужно внимание", "Needs attention")
+                : L10n.text("Всё работает", "Everything works")
         }
     }
 

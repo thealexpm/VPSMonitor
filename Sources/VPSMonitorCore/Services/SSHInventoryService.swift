@@ -125,7 +125,12 @@ public struct SSHInventoryService: Sendable {
                         let msg = String(data: err, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                         continuation.resume(throwing: SSHInventoryError.connectionFailed(
-                            msg.isEmpty ? "Ошибка подключения. Проверьте логин и пароль." : msg
+                            msg.isEmpty
+                                ? L10n.text(
+                                    "Ошибка подключения. Проверьте логин и пароль.",
+                                    "Connection failed. Check the username and password."
+                                )
+                                : msg
                         ))
                         return
                     }
@@ -233,9 +238,17 @@ public enum SSHInventoryError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .connectionFailed(let msg):
-            msg.isEmpty ? "Не удалось подключиться к VPS по SSH." : msg
+            msg.isEmpty
+                ? L10n.text(
+                    "Не удалось подключиться к VPS по SSH.",
+                    "Could not connect to the VPS over SSH."
+                )
+                : msg
         case .noPasswordStored:
-            "Пароль не сохранён. Откройте Настройки и введите пароль для этого сервера."
+            L10n.text(
+                "Пароль не сохранён. Откройте Настройки и введите пароль для этого сервера.",
+                "No password is saved. Open Settings and enter the password for this server."
+            )
         }
     }
 }

@@ -8,52 +8,66 @@ struct ResourceGrid: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Сервер сейчас")
+            Text(L10n.text("Сервер сейчас", "Server now"))
                 .font(.title2.bold())
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                 ResourceCard(
-                    title: "Процессор",
-                    value: "занято \(snapshot.cpuUsagePercent)%",
-                    detail: snapshot.cpuUsagePercent < 80 ? "обычная загрузка" : "высокая загрузка",
+                    title: L10n.text("Процессор", "CPU"),
+                    value: L10n.text("занято \(snapshot.cpuUsagePercent)%", "\(snapshot.cpuUsagePercent)% used"),
+                    detail: snapshot.cpuUsagePercent < 80
+                        ? L10n.text("обычная загрузка", "normal load")
+                        : L10n.text("высокая загрузка", "high load"),
                     icon: "cpu",
                     color: snapshot.cpuUsagePercent < 80 ? .green : .orange,
                     chartValues: history.map(\.cpuPercent)
                 )
                 ResourceCard(
-                    title: "Память",
-                    value: "занято \(MonitorFormatters.bytes(snapshot.memoryUsedBytes))",
-                    detail: "из \(MonitorFormatters.bytes(snapshot.memoryTotalBytes))",
+                    title: L10n.text("Память", "Memory"),
+                    value: L10n.text(
+                        "занято \(MonitorFormatters.bytes(snapshot.memoryUsedBytes))",
+                        "\(MonitorFormatters.bytes(snapshot.memoryUsedBytes)) used"
+                    ),
+                    detail: L10n.text(
+                        "из \(MonitorFormatters.bytes(snapshot.memoryTotalBytes))",
+                        "of \(MonitorFormatters.bytes(snapshot.memoryTotalBytes))"
+                    ),
                     icon: "memorychip",
                     color: memoryColor,
                     chartValues: history.map(\.memoryPercent)
                 )
                 ResourceCard(
-                    title: "Диск",
-                    value: "свободно \(MonitorFormatters.bytes(snapshot.diskFreeBytes))",
-                    detail: "из \(MonitorFormatters.bytes(snapshot.diskTotalBytes))",
+                    title: L10n.text("Диск", "Disk"),
+                    value: L10n.text(
+                        "свободно \(MonitorFormatters.bytes(snapshot.diskFreeBytes))",
+                        "\(MonitorFormatters.bytes(snapshot.diskFreeBytes)) free"
+                    ),
+                    detail: L10n.text(
+                        "из \(MonitorFormatters.bytes(snapshot.diskTotalBytes))",
+                        "of \(MonitorFormatters.bytes(snapshot.diskTotalBytes))"
+                    ),
                     icon: "internaldrive",
                     color: diskColor,
                     chartValues: history.map(\.diskUsedPercent)
                 )
                 ResourceCard(
-                    title: "Ответ VPS",
+                    title: L10n.text("Ответ VPS", "VPS response"),
                     value: MonitorFormatters.milliseconds(snapshot.responseTime),
-                    detail: "полная SSH-проверка",
+                    detail: L10n.text("полная SSH-проверка", "full SSH check"),
                     icon: "network",
                     color: .blue
                 )
                 ResourceCard(
-                    title: "Без перезагрузки",
+                    title: L10n.text("Без перезагрузки", "Uptime"),
                     value: MonitorFormatters.duration(snapshot.uptimeSeconds),
                     detail: snapshot.hostName,
                     icon: "clock",
                     color: .blue
                 )
                 ResourceCard(
-                    title: "Последняя проверка",
+                    title: L10n.text("Последняя проверка", "Last check"),
                     value: snapshot.checkedAt.formatted(date: .omitted, time: .standard),
-                    detail: "обновляется автоматически",
+                    detail: L10n.text("обновляется автоматически", "updates automatically"),
                     icon: "checkmark.circle",
                     color: .green
                 )

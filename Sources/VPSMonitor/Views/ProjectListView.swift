@@ -16,29 +16,30 @@ struct ProjectListView: View {
 
             // Header
             HStack(alignment: .center) {
-                Text("Найденные проекты")
+                Text(L10n.text("Найденные проекты", "Detected projects"))
                     .font(.title2.bold())
                 if hasNew {
-                    Text("НОВЫЕ").font(.caption2.bold()).foregroundStyle(.white)
+                    Text(L10n.text("НОВЫЕ", "NEW")).font(.caption2.bold()).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 3)
                         .background(.orange, in: Capsule())
                 }
                 Spacer()
                 if hiddenCount > 0 {
-                    Text("Скрыто: \(hiddenCount)").font(.callout).foregroundStyle(.secondary)
+                    Text(L10n.text("Скрыто: \(hiddenCount)", "Hidden: \(hiddenCount)"))
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 Button { showingFilter = true } label: {
-                    Label("Настроить", systemImage: "slider.horizontal.3")
+                    Label(L10n.text("Настроить", "Configure"), systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.borderless)
             }
 
             // List
             if visible.isEmpty && store.allProjects(for: serverID).isEmpty {
-                Text("Прикладные проекты не найдены.")
+                Text(L10n.text("Прикладные проекты не найдены.", "No application projects found."))
                     .foregroundStyle(.secondary)
             } else if visible.isEmpty {
-                Text("Все проекты скрыты. Нажмите «Настроить».")
+                Text(L10n.text("Все проекты скрыты. Нажмите «Настроить».", "All projects are hidden. Click “Configure”."))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(visible) { project in
@@ -50,7 +51,7 @@ struct ProjectListView: View {
         .sheet(isPresented: $showingFilter) {
             ProjectFilterView(
                 serverID: serverID,
-                serverName: store.configurations.first { $0.id == serverID }?.name ?? "Сервер",
+                serverName: store.configurations.first { $0.id == serverID }?.name ?? L10n.text("Сервер", "Server"),
                 store: store
             )
         }
@@ -77,7 +78,7 @@ private struct ProjectRow: View {
                     HStack(spacing: 8) {
                         Text(project.name).font(.headline)
                         if isNew {
-                            Text("НОВЫЙ").font(.caption2.bold()).foregroundStyle(.white)
+                            Text(L10n.text("НОВЫЙ", "NEW")).font(.caption2.bold()).foregroundStyle(.white)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(.orange, in: Capsule())
                         }
@@ -128,9 +129,9 @@ private struct ProjectRow: View {
 
     private var stateText: String {
         switch project.state {
-        case .running:    "Работает"
-        case .stopped:    "Требует внимания: служба не работает"
-        case .folderOnly: "Найдена папка, служба не обнаружена"
+        case .running:    L10n.text("Работает", "Running")
+        case .stopped:    L10n.text("Требует внимания: служба не работает", "Needs attention: service is not running")
+        case .folderOnly: L10n.text("Найдена папка, служба не обнаружена", "Folder found, service not detected")
         }
     }
     private var stateIcon: String {
@@ -179,7 +180,7 @@ private struct ServiceStatRow: View {
                     .monospacedDigit()
             }
             if !service.isRunning {
-                Text("не запущена")
+                Text(L10n.text("не запущена", "not running"))
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
