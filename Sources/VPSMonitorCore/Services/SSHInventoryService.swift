@@ -2,6 +2,7 @@ import Foundation
 
 public struct SSHInventoryService: Sendable {
     public init() {}
+    private static let commandTimeout: TimeInterval = 30
 
     public func fetch(configuration: MonitorConfiguration) async throws -> ServerSnapshot {
         let startedAt = Date()
@@ -34,37 +35,19 @@ public struct SSHInventoryService: Sendable {
     // MARK: - Key-based auth (existing behaviour, unchanged)
 
     private func runSSHWithKey(configuration: MonitorConfiguration) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                let stdout = Pipe(); let stderr = Pipe(); let stdin = Pipe()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-                process.arguments = [
-                    "-o", "BatchMode=yes",
-                    "-o", "ConnectTimeout=5",
-                    "\(configuration.user)@\(configuration.host)",
-                    "bash -s"
-                ]
-                process.standardOutput = stdout
-                process.standardError = stderr
-                process.standardInput = stdin
-                do {
-                    try process.run()
-                    stdin.fileHandleForWriting.write(Data(Self.remoteScript.utf8))
-                    try stdin.fileHandleForWriting.close()
-                    let out = stdout.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    let err = stderr.fileHandleForReading.readDataToEndOfFile()
-                    guard process.terminationStatus == 0 else {
-                        let msg = String(data: err, encoding: .utf8)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        continuation.resume(throwing: SSHInventoryError.connectionFailed(msg))
-                        return
-                    }
-                    continuation.resume(returning: String(data: out, encoding: .utf8) ?? "")
-                } catch { continuation.resume(throwing: error) }
-            }
-        }
+        try await runSSH(
+            arguments: [
+                "-o", "BatchMode=yes",
+                "-o", "ConnectTimeout=5",
+                "\(configuration.user)@\(configuration.host)",
+                "bash -s"
+            ],
+            environment: nil,
+            defaultErrorMessage: L10n.text(
+                "Не удалось подключиться к VPS по SSH.",
+                "Could not connect to the VPS over SSH."
+            )
+        )
     }
 
     // MARK: - Password-based auth via SSH_ASKPASS
@@ -74,9 +57,9 @@ public struct SSHInventoryService: Sendable {
             throw SSHInventoryError.noPasswordStored
         }
 
-        // Encode each byte as \xNN so any character is safely embedded in a printf format string
-        let hexPw = password.unicodeScalars
-            .map { String(format: "\\x%02x", $0.value) }
+        // Encode UTF-8 bytes as \xNN so every password character survives shell printf.
+        let hexPw = password.utf8
+            .map { String(format: "\\x%02x", $0) }
             .joined()
         let askpassContent = "#!/bin/sh\nprintf '\(hexPw)'\n"
 
@@ -87,54 +70,101 @@ public struct SSHInventoryService: Sendable {
                                               ofItemAtPath: askpassURL.path)
         defer { try? FileManager.default.removeItem(at: askpassURL) }
 
-        return try await withCheckedThrowingContinuation { continuation in
+        return try await runSSH(
+            arguments: [
+                "-o", "BatchMode=no",
+                "-o", "ConnectTimeout=10",
+                "-o", "PreferredAuthentications=password",
+                "-o", "PubkeyAuthentication=no",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "NumberOfPasswordPrompts=1",
+                "\(configuration.user)@\(configuration.host)",
+                "bash -s"
+            ],
+            environment: [
+                // SSH_ASKPASS_REQUIRE=force: use askpass even without a controlling terminal
+                // Supported by OpenSSH 8.4+ (macOS 13+ ships >= 9.0)
+                "SSH_ASKPASS":         askpassURL.path,
+                "SSH_ASKPASS_REQUIRE": "force",
+                "DISPLAY":            ":0",          // fallback for older SSH builds
+                "HOME":               NSHomeDirectory(),
+                "PATH":               "/usr/bin:/bin:/usr/sbin:/sbin"
+            ],
+            defaultErrorMessage: L10n.text(
+                "Ошибка подключения. Проверьте логин и пароль.",
+                "Connection failed. Check the username and password."
+            )
+        )
+    }
+
+    private func runSSH(
+        arguments: [String],
+        environment: [String: String]?,
+        defaultErrorMessage: String
+    ) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
                 let stdout = Pipe(); let stderr = Pipe(); let stdin = Pipe()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-                process.arguments = [
-                    "-o", "BatchMode=no",
-                    "-o", "ConnectTimeout=10",
-                    "-o", "PreferredAuthentications=password",
-                    "-o", "PubkeyAuthentication=no",
-                    "-o", "StrictHostKeyChecking=no",
-                    "-o", "NumberOfPasswordPrompts=1",
-                    "\(configuration.user)@\(configuration.host)",
-                    "bash -s"
-                ]
-                process.environment = [
-                    // SSH_ASKPASS_REQUIRE=force: use askpass even without a controlling terminal
-                    // Supported by OpenSSH 8.4+ (macOS 13+ ships ≥ 9.0)
-                    "SSH_ASKPASS":         askpassURL.path,
-                    "SSH_ASKPASS_REQUIRE": "force",
-                    "DISPLAY":            ":0",          // fallback for older SSH builds
-                    "HOME":               NSHomeDirectory(),
-                    "PATH":               "/usr/bin:/bin:/usr/sbin:/sbin"
-                ]
+                process.arguments = arguments
+                process.environment = environment
                 process.standardOutput = stdout
                 process.standardError = stderr
                 process.standardInput = stdin
+
+                let outputGroup = DispatchGroup()
+                let stdoutBuffer = PipeBuffer()
+                let stderrBuffer = PipeBuffer()
+
+                func read(_ pipe: Pipe, into buffer: PipeBuffer) {
+                    outputGroup.enter()
+                    DispatchQueue.global(qos: .utility).async {
+                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                        buffer.set(data)
+                        outputGroup.leave()
+                    }
+                }
+
                 do {
                     try process.run()
+                    read(stdout, into: stdoutBuffer)
+                    read(stderr, into: stderrBuffer)
+
                     stdin.fileHandleForWriting.write(Data(Self.remoteScript.utf8))
                     try stdin.fileHandleForWriting.close()
-                    let out = stdout.fileHandleForReading.readDataToEndOfFile()
+
+                    let timeoutWorkItem = DispatchWorkItem {
+                        if process.isRunning {
+                            process.terminate()
+                        }
+                    }
+                    DispatchQueue.global(qos: .utility).asyncAfter(
+                        deadline: .now() + Self.commandTimeout,
+                        execute: timeoutWorkItem
+                    )
+
                     process.waitUntilExit()
-                    let err = stderr.fileHandleForReading.readDataToEndOfFile()
-                    guard process.terminationStatus == 0 else {
-                        let msg = String(data: err, encoding: .utf8)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    timeoutWorkItem.cancel()
+                    outputGroup.wait()
+
+                    guard process.terminationReason != .uncaughtSignal else {
                         continuation.resume(throwing: SSHInventoryError.connectionFailed(
-                            msg.isEmpty
-                                ? L10n.text(
-                                    "Ошибка подключения. Проверьте логин и пароль.",
-                                    "Connection failed. Check the username and password."
-                                )
-                                : msg
+                            L10n.text(
+                                "SSH-проверка превысила лимит \(Int(Self.commandTimeout)) секунд.",
+                                "SSH check exceeded the \(Int(Self.commandTimeout))-second timeout."
+                            )
                         ))
                         return
                     }
-                    continuation.resume(returning: String(data: out, encoding: .utf8) ?? "")
+
+                    guard process.terminationStatus == 0 else {
+                        let msg = String(data: stderrBuffer.data, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        continuation.resume(throwing: SSHInventoryError.connectionFailed(msg.isEmpty ? defaultErrorMessage : msg))
+                        return
+                    }
+                    continuation.resume(returning: String(data: stdoutBuffer.data, encoding: .utf8) ?? "")
                 } catch { continuation.resume(throwing: error) }
             }
         }
@@ -250,5 +280,22 @@ public enum SSHInventoryError: LocalizedError {
                 "No password is saved. Open Settings and enter the password for this server."
             )
         }
+    }
+}
+
+private final class PipeBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedData = Data()
+
+    var data: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedData
+    }
+
+    func set(_ data: Data) {
+        lock.lock()
+        storedData = data
+        lock.unlock()
     }
 }

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var newRefreshInterval: TimeInterval = 30
     @State private var newAuthMethod: AuthMethod = .sshKey
     @State private var newPassword = ""
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -103,20 +104,35 @@ struct SettingsView: View {
         .sheet(item: $editingConfiguration) { configuration in
             EditServerSheet(configuration: configuration,
                             existingPassword: KeychainService.loadPassword(for: configuration.id)) { updated, password in
-                store.updateConfiguration(updated)
-                // Save or remove password in Keychain
-                switch updated.authMethod {
-                case .password:
-                    if let pw = password, !pw.isEmpty {
-                        KeychainService.savePassword(pw, for: updated.id)
+                do {
+                    // Save credentials before mutating the visible configuration.
+                    switch updated.authMethod {
+                    case .password:
+                        if let pw = password, !pw.isEmpty {
+                            try KeychainService.savePassword(pw, for: updated.id)
+                        }
+                    case .sshKey:
+                        try KeychainService.deletePassword(for: updated.id)
                     }
-                case .sshKey:
-                    KeychainService.deletePassword(for: updated.id)
+                    store.updateConfiguration(updated)
+                    editingConfiguration = nil
+                } catch {
+                    errorMessage = error.localizedDescription
                 }
-                editingConfiguration = nil
             } onCancel: {
                 editingConfiguration = nil
             }
+        }
+        .alert(
+            L10n.text("Не удалось сохранить пароль", "Could not save password"),
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -137,9 +153,14 @@ struct SettingsView: View {
             refreshInterval: newRefreshInterval,
             authMethod: newAuthMethod
         )
-        store.addServer(config)
-        if newAuthMethod == .password && !newPassword.isEmpty {
-            KeychainService.savePassword(newPassword, for: config.id)
+        do {
+            if newAuthMethod == .password {
+                try KeychainService.savePassword(newPassword, for: config.id)
+            }
+            store.addServer(config)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
         }
         newName = ""; newHost = ""; newUser = "root"
         newRefreshInterval = 30; newAuthMethod = .sshKey; newPassword = ""
@@ -199,7 +220,10 @@ private struct EditServerSheet: View {
     }
 
     private var canSave: Bool {
-        !name.trimmed.isEmpty && !host.trimmed.isEmpty && !user.trimmed.isEmpty
+        !name.trimmed.isEmpty &&
+        !host.trimmed.isEmpty &&
+        !user.trimmed.isEmpty &&
+        (authMethod == .sshKey || existingPassword != nil || !password.isEmpty)
     }
 
     var body: some View {

@@ -4,14 +4,32 @@ import Security
 public enum KeychainService {
     private static let service = "VPSMonitor.SSH"
 
+    public struct KeychainError: LocalizedError {
+        public let operation: String
+        public let status: OSStatus
+
+        public var errorDescription: String? {
+            L10n.text(
+                "Связка ключей macOS вернула ошибку \(status) при операции: \(operation).",
+                "macOS Keychain returned error \(status) while trying to \(operation)."
+            )
+        }
+    }
+
     // MARK: - Public API
 
-    public static func savePassword(_ password: String, for id: UUID) {
+    public static func savePassword(_ password: String, for id: UUID) throws {
         let data = Data(password.utf8)
         var query = base(for: id)
-        SecItemDelete(query as CFDictionary)          // remove old entry if exists
+        let deleteStatus = SecItemDelete(query as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw KeychainError(operation: "replace password", status: deleteStatus)
+        }
         query[kSecValueData as String] = data
-        SecItemAdd(query as CFDictionary, nil)
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw KeychainError(operation: "save password", status: addStatus)
+        }
     }
 
     public static func loadPassword(for id: UUID) -> String? {
@@ -24,8 +42,11 @@ public enum KeychainService {
         return String(data: data, encoding: .utf8)
     }
 
-    public static func deletePassword(for id: UUID) {
-        SecItemDelete(base(for: id) as CFDictionary)
+    public static func deletePassword(for id: UUID) throws {
+        let status = SecItemDelete(base(for: id) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError(operation: "delete password", status: status)
+        }
     }
 
     // MARK: - Private

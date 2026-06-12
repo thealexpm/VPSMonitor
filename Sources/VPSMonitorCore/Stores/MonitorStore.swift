@@ -247,7 +247,7 @@ public final class MonitorStore: ObservableObject {
             metricHistory[id] = nil
             hiddenProjectIDs[id] = nil
             newProjectIDs[id] = nil
-            KeychainService.deletePassword(for: id)   // clean up stored password if any
+            try? KeychainService.deletePassword(for: id)   // best-effort cleanup
         }
         saveHiddenProjectIDs()
     }
