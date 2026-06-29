@@ -10,6 +10,14 @@ public final class MonitorStore: ObservableObject {
         case failed(String)
     }
 
+    public struct PasswordRequest: Identifiable, Equatable, Sendable {
+        public let id: UUID
+        public let serverName: String
+        public let host: String
+        public let user: String
+        public let message: String
+    }
+
     @Published public var configurations: [MonitorConfiguration] {
         didSet {
             saveConfigurations()
@@ -23,6 +31,7 @@ public final class MonitorStore: ObservableObject {
     @Published public private(set) var loadStates: [UUID: LoadState] = [:]
     @Published public private(set) var snapshots: [UUID: ServerSnapshot] = [:]
     @Published public private(set) var metricHistory: [UUID: [MetricSample]] = [:]
+    @Published public private(set) var passwordRequest: PasswordRequest?
     /// Project IDs the user chose to hide, per server. Persisted.
     @Published public private(set) var hiddenProjectIDs: [UUID: Set<String>] = [:]
     /// Project IDs that appeared since the previous poll, per server. Session-only.
@@ -51,6 +60,10 @@ public final class MonitorStore: ObservableObject {
             self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
             self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
             normalizeSelection()
+            if defaults.data(forKey: "monitor.configurations") == nil, !configurations.isEmpty {
+                saveConfigurations()
+                saveSelectedServerID()
+            }
         }
     }
 
@@ -106,6 +119,10 @@ public final class MonitorStore: ObservableObject {
     public func visibleProjects(for serverID: UUID) -> [DetectedProject] {
         let hidden = hiddenProjectIDs[serverID] ?? []
         return allProjects(for: serverID).filter { !hidden.contains($0.id) }
+    }
+
+    public func hasVisibleStoppedProjects(serverID: UUID) -> Bool {
+        visibleProjects(for: serverID).contains { $0.state == .stopped }
     }
 
     public func isHidden(_ projectID: String, serverID: UUID) -> Bool {
@@ -211,12 +228,36 @@ public final class MonitorStore: ObservableObject {
             metricHistory[serverID] = history
 
         } catch {
+            let errorMessage = error.localizedDescription
+
+            if configuration.authMethod == .sshKey,
+               let sshError = error as? SSHInventoryError,
+               sshError.requiresPassword {
+                if passwordRequest == nil || passwordRequest?.id == configuration.id {
+                    passwordRequest = PasswordRequest(
+                        id: configuration.id,
+                        serverName: configuration.name,
+                        host: configuration.host,
+                        user: configuration.user,
+                        message: L10n.text(
+                            "SSH-ключ не подошёл. Введите пароль SSH для этого сервера.",
+                            "The SSH key was rejected. Enter the SSH password for this server."
+                        )
+                    )
+                }
+                loadStates[serverID] = .failed(L10n.text(
+                    "Для подключения нужен пароль SSH.",
+                    "An SSH password is required to connect."
+                ))
+                return
+            }
+
             // Notify only when server was previously reachable
             switch previousState {
-            case .loaded: NotificationService.sendServerDown(serverName: configuration.name)
+            case .loaded: NotificationService.sendServerDown(serverName: configuration.name, errorMessage: errorMessage)
             default: break
             }
-            loadStates[serverID] = .failed(error.localizedDescription)
+            loadStates[serverID] = .failed(errorMessage)
         }
     }
 
@@ -262,6 +303,20 @@ public final class MonitorStore: ObservableObject {
         configurations[index] = configuration
     }
 
+    public func dismissPasswordRequest() {
+        passwordRequest = nil
+    }
+
+    public func savePasswordAndRetry(serverID: UUID, password: String) throws {
+        guard let index = configurations.firstIndex(where: { $0.id == serverID }) else { return }
+        var configuration = configurations[index]
+        try KeychainService.savePassword(password, for: configuration.id)
+        configuration.authMethod = .password
+        configurations[index] = configuration
+        passwordRequest = nil
+        Task { await refresh(serverID: serverID) }
+    }
+
     public func state(for serverID: UUID) -> LoadState {
         loadStates[serverID] ?? .waiting
     }
@@ -271,8 +326,8 @@ public final class MonitorStore: ObservableObject {
     }
 
     public func isHealthy(serverID: UUID) -> Bool {
-        guard case .loaded(let snapshot) = state(for: serverID) else { return false }
-        return !snapshot.projects.contains(where: { $0.state == .stopped })
+        guard case .loaded = state(for: serverID) else { return false }
+        return !hasVisibleStoppedProjects(serverID: serverID)
     }
 
     private func isFailed(serverID: UUID) -> Bool {
@@ -346,8 +401,7 @@ public final class MonitorStore: ObservableObject {
 
     private static func loadConfigurations(from defaults: UserDefaults) -> [MonitorConfiguration] {
         if let data = defaults.data(forKey: "monitor.configurations"),
-           let configurations = try? JSONDecoder().decode([MonitorConfiguration].self, from: data),
-           !configurations.isEmpty {
+           let configurations = try? JSONDecoder().decode([MonitorConfiguration].self, from: data) {
             return configurations
         }
 
@@ -356,7 +410,7 @@ public final class MonitorStore: ObservableObject {
         let legacyUser = defaults.string(forKey: "monitor.user")
         let legacyInterval = defaults.double(forKey: "monitor.refreshInterval")
         guard let host = legacyHost, !host.isEmpty else {
-            return []   // Fresh install: user adds their own server via Settings
+            return LocalSSHServerImporter().importConfigurations()
         }
         return [
             MonitorConfiguration(

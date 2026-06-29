@@ -43,6 +43,7 @@ public struct SSHInventoryService: Sendable {
                 "bash -s"
             ],
             environment: nil,
+            host: configuration.host,
             defaultErrorMessage: L10n.text(
                 "Не удалось подключиться к VPS по SSH.",
                 "Could not connect to the VPS over SSH."
@@ -90,6 +91,7 @@ public struct SSHInventoryService: Sendable {
                 "HOME":               NSHomeDirectory(),
                 "PATH":               "/usr/bin:/bin:/usr/sbin:/sbin"
             ],
+            host: configuration.host,
             defaultErrorMessage: L10n.text(
                 "Ошибка подключения. Проверьте логин и пароль.",
                 "Connection failed. Check the username and password."
@@ -100,6 +102,7 @@ public struct SSHInventoryService: Sendable {
     private func runSSH(
         arguments: [String],
         environment: [String: String]?,
+        host: String,
         defaultErrorMessage: String
     ) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
@@ -161,13 +164,44 @@ public struct SSHInventoryService: Sendable {
                     guard process.terminationStatus == 0 else {
                         let msg = String(data: stderrBuffer.data, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        continuation.resume(throwing: SSHInventoryError.connectionFailed(msg.isEmpty ? defaultErrorMessage : msg))
+                        let errorMessage = msg.isEmpty
+                            ? defaultErrorMessage
+                            : Self.userActionableMessage(for: msg, host: host)
+                        continuation.resume(throwing: SSHInventoryError.connectionFailed(errorMessage))
                         return
                     }
                     continuation.resume(returning: String(data: stdoutBuffer.data, encoding: .utf8) ?? "")
                 } catch { continuation.resume(throwing: error) }
             }
         }
+    }
+
+    private static func userActionableMessage(for sshError: String, host: String) -> String {
+        let lowercased = sshError.lowercased()
+        guard isPrivateIPv4(host),
+              lowercased.contains("no route to host") || lowercased.contains("network is unreachable")
+        else {
+            return sshError
+        }
+
+        return L10n.text(
+            "macOS может блокировать доступ VPSMonitor к локальной сети. Откройте Системные настройки -> Конфиденциальность и безопасность -> Локальная сеть и разрешите доступ для VPSMonitor.\n\nИсходная ошибка SSH: \(sshError)",
+            "macOS may be blocking VPSMonitor access to the local network. Open System Settings -> Privacy & Security -> Local Network and allow access for VPSMonitor.\n\nOriginal SSH error: \(sshError)"
+        )
+    }
+
+    private static func isPrivateIPv4(_ host: String) -> Bool {
+        let parts = host.split(separator: ".")
+        guard parts.count == 4,
+              let first = Int(parts[0]),
+              let second = Int(parts[1]),
+              parts.allSatisfy({ Int($0) != nil }) else {
+            return false
+        }
+
+        return first == 10
+            || (first == 192 && second == 168)
+            || (first == 172 && (16...31).contains(second))
     }
 
     // MARK: - Remote script (read-only, exits cleanly)
@@ -264,6 +298,13 @@ done
 public enum SSHInventoryError: LocalizedError {
     case connectionFailed(String)
     case noPasswordStored
+
+    public var requiresPassword: Bool {
+        guard case .connectionFailed(let message) = self else { return false }
+        let lowercased = message.lowercased()
+        return lowercased.contains("permission denied (")
+            && (lowercased.contains("password") || lowercased.contains("keyboard-interactive"))
+    }
 
     public var errorDescription: String? {
         switch self {

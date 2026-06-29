@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VPSMonitorCore
 
@@ -16,6 +17,23 @@ struct ContentView: View {
                         .padding(.top, 16)
                 }
                 serverDetail
+            }
+        }
+        .sheet(item: passwordRequestBinding) { request in
+            PasswordRequiredSheet(request: request) { password in
+                try store.savePasswordAndRetry(serverID: request.id, password: password)
+            } onCancel: {
+                store.dismissPasswordRequest()
+            }
+        }
+    }
+
+    private var passwordRequestBinding: Binding<MonitorStore.PasswordRequest?> {
+        Binding {
+            store.passwordRequest
+        } set: { request in
+            if request == nil {
+                store.dismissPasswordRequest()
             }
         }
     }
@@ -41,7 +59,7 @@ struct ContentView: View {
                     )
                 case .failed(let message) where store.selectedSnapshot == nil:
                     ContentUnavailableView(
-                        L10n.text("VPS недоступен", "VPS unavailable"),
+                        L10n.text("Ошибка", "Error"),
                         systemImage: "exclamationmark.triangle",
                         description: Text(message)
                     )
@@ -87,7 +105,12 @@ struct ContentView: View {
 
             Spacer()
 
-            StatusBadge(state: store.selectedLoadState)
+            StatusBadge(
+                state: store.selectedLoadState,
+                hasVisibleStoppedProjects: store.selectedConfiguration.map {
+                    store.hasVisibleStoppedProjects(serverID: $0.id)
+                } ?? false
+            )
         }
     }
 
@@ -123,6 +146,73 @@ struct ContentView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct PasswordRequiredSheet: View {
+    let request: MonitorStore.PasswordRequest
+    let onSave: (String) throws -> Void
+    let onCancel: () -> Void
+
+    @State private var password = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "key.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.text("Требуется пароль SSH", "SSH password required"))
+                        .font(.title3.bold())
+                    Text("\(request.user)@\(request.host)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(request.message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            SecureField(L10n.text("Пароль SSH", "SSH password"), text: $password)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(save)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Button(L10n.text("Отмена", "Cancel"), role: .cancel) {
+                    onCancel()
+                }
+                Spacer()
+                Button(L10n.text("Сохранить и проверить", "Save and check")) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(password.isEmpty)
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func save() {
+        do {
+            try onSave(password)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -166,6 +256,7 @@ private struct ServerSidebarView: View {
 
 private struct StatusBadge: View {
     let state: MonitorStore.LoadState
+    let hasVisibleStoppedProjects: Bool
 
     var body: some View {
         Label(title, systemImage: icon)
@@ -180,9 +271,9 @@ private struct StatusBadge: View {
         switch state {
         case .waiting: L10n.text("Ожидание проверки", "Waiting for check")
         case .refreshing: L10n.text("Проверяю", "Checking")
-        case .failed: L10n.text("Нет подключения", "No connection")
-        case .loaded(let snapshot):
-            snapshot.projects.contains(where: { $0.state == .stopped })
+        case .failed: L10n.text("Ошибка", "Error")
+        case .loaded:
+            hasVisibleStoppedProjects
                 ? L10n.text("Нужно внимание", "Needs attention")
                 : L10n.text("Всё работает", "Everything works")
         }
@@ -192,8 +283,8 @@ private struct StatusBadge: View {
         switch state {
         case .waiting, .refreshing: "arrow.triangle.2.circlepath"
         case .failed: "xmark.circle.fill"
-        case .loaded(let snapshot):
-            snapshot.projects.contains(where: { $0.state == .stopped })
+        case .loaded:
+            hasVisibleStoppedProjects
                 ? "exclamationmark.triangle.fill"
                 : "checkmark.circle.fill"
         }
@@ -203,8 +294,8 @@ private struct StatusBadge: View {
         switch state {
         case .waiting, .refreshing: .secondary
         case .failed: .red
-        case .loaded(let snapshot):
-            snapshot.projects.contains(where: { $0.state == .stopped }) ? .orange : .green
+        case .loaded:
+            hasVisibleStoppedProjects ? .orange : .green
         }
     }
 }

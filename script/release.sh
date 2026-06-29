@@ -80,6 +80,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleVersion</key>        <string>$VERSION</string>
   <key>CFBundlePackageType</key>    <string>APPL</string>
   <key>LSMinimumSystemVersion</key> <string>$MIN_SYSTEM_VERSION</string>
+  <key>NSLocalNetworkUsageDescription</key> <string>VPSMonitor connects to your local network servers over SSH to collect read-only status information.</string>
   <key>NSPrincipalClass</key>       <string>NSApplication</string>
 </dict>
 </plist>

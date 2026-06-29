@@ -1,8 +1,7 @@
-import Testing
+import XCTest
 @testable import VPSMonitorCore
 
-struct RemoteInventoryParserTests {
-    @Test
+final class RemoteInventoryParserTests: XCTestCase {
     func parsesMetricsAndBuildsDirectoryProject() {
         let output = """
         HOST|a2Vlbi1saW1l
@@ -19,14 +18,13 @@ struct RemoteInventoryParserTests {
         let inventory = RemoteInventoryParser.parse(output)
         let projects = ProjectInventoryBuilder.build(from: inventory)
 
-        #expect(inventory.hostName == "keen-lime")
-        #expect(inventory.cpuUsagePercent == 12)
-        #expect(projects.count == 1)
-        #expect(projects[0].name == "claude-ad-connectors")
-        #expect(projects[0].state == .running)
+        XCTAssertEqual(inventory.hostName, "keen-lime")
+        XCTAssertEqual(inventory.cpuUsagePercent, 12)
+        XCTAssertEqual(projects.count, 1)
+        XCTAssertEqual(projects[0].name, "claude-ad-connectors")
+        XCTAssertEqual(projects[0].state, .running)
     }
 
-    @Test
     func includesStandaloneBotService() {
         let output = """
         SERVICE|dGVsZWdyYW0tYm90LWFwaS5zZXJ2aWNl|VGVsZWdyYW0gQm90IEFQSQ==|YWN0aXZl|cnVubmluZw==||0
@@ -35,7 +33,7 @@ struct RemoteInventoryParserTests {
         let inventory = RemoteInventoryParser.parse(output)
         let projects = ProjectInventoryBuilder.build(from: inventory)
 
-        #expect(projects.map(\.name) == ["telegram-bot-api"])
-        #expect(projects[0].state == .running)
+        XCTAssertEqual(projects.map(\.name), ["telegram-bot-api"])
+        XCTAssertEqual(projects[0].state, .running)
     }
 }

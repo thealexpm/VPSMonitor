@@ -181,6 +181,7 @@ Outputs `dist/VPSMonitor-1.1.dmg` ready to upload to GitHub Releases. See commen
 - Issues and feature requests: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
 - Direct contact: [@thealexpm on Telegram](https://t.me/thealexpm)
 - Pull requests welcome
+- Thanks to [Angel-M-R](https://github.com/Angel-M-R) for the first public fork and the ideas behind local SSH server import, SSH password fallback, clearer connection errors, and hidden-project-aware health status.
 
 ## License
 
@@ -319,6 +320,7 @@ Host my-vps
 - Issues и предложения: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
 - Прямой контакт: [@thealexpm в Telegram](https://t.me/thealexpm)
 - Pull requests приветствуются
+- Спасибо [Angel-M-R](https://github.com/Angel-M-R) за первый публичный fork и идеи для импорта локальных SSH-серверов, fallback на SSH-пароль, более понятных ошибок подключения и статуса сервера с учётом скрытых проектов.
 
 ## Лицензия
 
