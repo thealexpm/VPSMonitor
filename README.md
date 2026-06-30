@@ -13,7 +13,7 @@
 
 [English](#english) · [Русский](#русский) · [Español](#español) · [中文](#中文) · [Download](https://github.com/thealexpm/VPSMonitor/releases) · [Support](https://t.me/thealexpm)
 
-<img src="Resources/screenshots/01-dashboard-en.png" width="640" alt="Dashboard"/>
+<img src="Resources/screenshots/en/01-dashboard-healthy.png" width="640" alt="VPSMonitor dashboard"/>
 
 </div>
 
@@ -44,36 +44,61 @@ VPSMonitor lives in your menu bar and shows live state of your Linux servers in 
 
 ## Screenshots
 
+### Interface languages
+
 <table>
   <tr>
-    <td><img src="Resources/screenshots/02-projects-en.png" alt="Projects with per-service CPU and RAM"/></td>
-    <td><img src="Resources/screenshots/06-staging-warning-en.png" alt="Server with a stopped service"/></td>
+    <td><img src="Resources/screenshots/en/01-dashboard-healthy.png" alt="English dashboard"/></td>
+    <td><img src="Resources/screenshots/ru/01-dashboard-healthy.png" alt="Russian dashboard"/></td>
   </tr>
   <tr>
-    <td align="center"><sub>Per-service CPU and RAM, project paths, statuses</sub></td>
-    <td align="center"><sub>Stopped service surfaces a clear warning</sub></td>
+    <td align="center"><sub>English</sub></td>
+    <td align="center"><sub>Русский</sub></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/03-settings-en.png" alt="Settings: add/edit/delete servers"/></td>
-    <td><img src="Resources/screenshots/05-filter-en.png" alt="Project visibility filter"/></td>
+    <td><img src="Resources/screenshots/es/01-dashboard-healthy.png" alt="Spanish dashboard"/></td>
+    <td><img src="Resources/screenshots/zh/01-dashboard-healthy.png" alt="Chinese dashboard"/></td>
   </tr>
   <tr>
-    <td align="center"><sub>Add/edit/delete servers, SSH key or password</sub></td>
-    <td align="center"><sub>Hide what you don't want to see on the dashboard</sub></td>
+    <td align="center"><sub>Español</sub></td>
+    <td align="center"><sub>中文</sub></td>
+  </tr>
+</table>
+
+### Product tour
+
+<table>
+  <tr>
+    <td><img src="Resources/screenshots/en/02-dashboard-incident.png" alt="Incident analysis"/></td>
+    <td><img src="Resources/screenshots/en/03-projects.png" alt="Projects with per-service CPU and RAM"/></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/08-edit-en.png" alt="Edit server modal"/></td>
-    <td><img src="Resources/screenshots/07-menu-bar-en.png" alt="Menu bar widget"/></td>
+    <td align="center"><sub>Incident analysis, baselines and copyable report</sub></td>
+    <td align="center"><sub>Per-service CPU/RAM, project paths and code-only folders</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>Edit server details in a focused sheet</sub></td>
-    <td align="center"><sub>Menu bar: all servers at a glance</sub></td>
+    <td><img src="Resources/screenshots/en/04-settings.png" alt="Settings: add/edit/delete servers"/></td>
+    <td><img src="Resources/screenshots/en/07-country-picker.png" alt="Country picker"/></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="Resources/screenshots/04-about-en.png" alt="About window" width="50%"/></td>
+    <td align="center"><sub>Add/edit/delete VPS, SSH key or password, app language</sub></td>
+    <td align="center"><sub>Country search, GeoIP auto mode and manual override</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><sub>About window — automatically switches between English and Russian based on system language</sub></td>
+    <td><img src="Resources/screenshots/en/08-project-filter.png" alt="Project visibility filter"/></td>
+    <td><img src="Resources/screenshots/en/09-history.png" alt="Metric history"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Hide noisy projects and manage new detections</sub></td>
+    <td align="center"><sub>Local metric history with CPU, RAM, disk and latency charts</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/en/10-menubar.png" alt="Menu bar widget"/></td>
+    <td><img src="Resources/screenshots/en/14-manual-commands.png" alt="Manual check commands"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Menu bar: all servers and actions at a glance</sub></td>
+    <td align="center"><sub>Manual check commands with one-click copy actions</sub></td>
   </tr>
 </table>
 
@@ -200,7 +225,7 @@ MIT — see [LICENSE](LICENSE).
 VPSMonitor — нативное macOS-приложение, которое живёт в строке меню и в реальном времени показывает состояние ваших Linux-серверов. Подключается по SSH вашими ключами или паролем, запускает удалённо небольшой read-only bash-скрипт и приносит результат в чистый нативный дашборд. На сервер ничего ставить не нужно.
 
 <div align="center">
-  <img src="Resources/screenshots/01-dashboard-ru.png" width="640" alt="Дашборд"/>
+  <img src="Resources/screenshots/ru/01-dashboard-healthy.png" width="640" alt="Дашборд VPSMonitor"/>
 </div>
 
 ## Возможности
@@ -224,28 +249,36 @@ VPSMonitor — нативное macOS-приложение, которое жи�
 
 <table>
   <tr>
-    <td><img src="Resources/screenshots/02-projects-ru.png" alt="Проекты с CPU и RAM по службам"/></td>
-    <td><img src="Resources/screenshots/06-staging-warning-ru.png" alt="Сервер с остановленной службой"/></td>
+    <td><img src="Resources/screenshots/ru/02-dashboard-incident.png" alt="Разбор инцидента"/></td>
+    <td><img src="Resources/screenshots/ru/03-projects.png" alt="Проекты с CPU и RAM по службам"/></td>
   </tr>
   <tr>
-    <td align="center"><sub>CPU и RAM по каждой службе, пути проектов, статусы</sub></td>
-    <td align="center"><sub>Остановленная служба сразу заметна</sub></td>
+    <td align="center"><sub>Разбор инцидента, база метрик и копируемый отчёт</sub></td>
+    <td align="center"><sub>CPU/RAM по службам, пути проектов и папки без привязанной службы</sub></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/03-settings-ru.png" alt="Настройки: добавление/редактирование/удаление серверов"/></td>
-    <td><img src="Resources/screenshots/05-filter-ru.png" alt="Фильтр видимости проектов"/></td>
+    <td><img src="Resources/screenshots/ru/04-settings.png" alt="Настройки: добавление/редактирование/удаление серверов"/></td>
+    <td><img src="Resources/screenshots/ru/07-country-picker.png" alt="Выбор страны"/></td>
   </tr>
   <tr>
-    <td align="center"><sub>Добавление, редактирование, удаление серверов — ключ или пароль</sub></td>
-    <td align="center"><sub>Скрывайте то, что не хотите видеть на дашборде</sub></td>
+    <td align="center"><sub>Серверы, язык интерфейса, ключ или пароль</sub></td>
+    <td align="center"><sub>Поиск страны, автоопределение по IP и ручной override</sub></td>
   </tr>
   <tr>
-    <td><img src="Resources/screenshots/07-menu-bar-ru.png" alt="Виджет строки меню"/></td>
-    <td><img src="Resources/screenshots/04-about-ru.png" alt="О программе"/></td>
+    <td><img src="Resources/screenshots/ru/08-project-filter.png" alt="Фильтр видимости проектов"/></td>
+    <td><img src="Resources/screenshots/ru/09-history.png" alt="История метрик"/></td>
   </tr>
   <tr>
-    <td align="center"><sub>Строка меню: все серверы на одном экране</sub></td>
-    <td align="center"><sub>О программе — текст подстраивается под язык системы</sub></td>
+    <td align="center"><sub>Скрытие шумных проектов и управление новыми находками</sub></td>
+    <td align="center"><sub>Локальная история CPU, RAM, диска и latency</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/ru/10-menubar.png" alt="Виджет строки меню"/></td>
+    <td><img src="Resources/screenshots/ru/14-manual-commands.png" alt="Команды ручной проверки"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Строка меню: все серверы и действия на одном экране</sub></td>
+    <td align="center"><sub>Команды ручной проверки с копированием в один клик</sub></td>
   </tr>
 </table>
 
@@ -353,7 +386,36 @@ VPSMonitor es una aplicación nativa para macOS que vive en la barra de menú y 
 
 ## Capturas
 
-Las capturas principales están en las secciones English y Русский. La aplicación puede cambiar el idioma de la interfaz sin cambiar el idioma de macOS.
+<div align="center">
+  <img src="Resources/screenshots/es/01-dashboard-healthy.png" width="640" alt="Panel de VPSMonitor"/>
+</div>
+
+<table>
+  <tr>
+    <td><img src="Resources/screenshots/es/02-dashboard-incident.png" alt="Análisis de incidentes"/></td>
+    <td><img src="Resources/screenshots/es/03-projects.png" alt="Proyectos detectados"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Análisis de incidentes, base de métricas e informe copiable</sub></td>
+    <td align="center"><sub>Servicios activos, carpetas de código y consumo por proceso</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/es/04-settings.png" alt="Ajustes"/></td>
+    <td><img src="Resources/screenshots/es/07-country-picker.png" alt="Selector de país"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Servidores, idioma, clave SSH o contraseña</sub></td>
+    <td align="center"><sub>Búsqueda de país, GeoIP automático y selección manual</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/es/09-history.png" alt="Historial de métricas"/></td>
+    <td><img src="Resources/screenshots/es/10-menubar.png" alt="Menú de la barra de menús"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Historial local de CPU, RAM, disco y latencia</sub></td>
+    <td align="center"><sub>Todos los servidores y acciones desde la barra de menús</sub></td>
+  </tr>
+</table>
 
 ## Requisitos
 
@@ -470,7 +532,36 @@ VPSMonitor 是原生 macOS 菜单栏应用，用于通过 SSH 实时监控多个
 
 ## 截图
 
-主要截图位于 English 和 Русский 部分。应用可以在不更改 macOS 系统语言的情况下切换界面语言。
+<div align="center">
+  <img src="Resources/screenshots/zh/01-dashboard-healthy.png" width="640" alt="VPSMonitor 仪表盘"/>
+</div>
+
+<table>
+  <tr>
+    <td><img src="Resources/screenshots/zh/02-dashboard-incident.png" alt="事件分析"/></td>
+    <td><img src="Resources/screenshots/zh/03-projects.png" alt="项目列表"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>事件分析、指标基线和可复制报告</sub></td>
+    <td align="center"><sub>运行服务、代码目录和进程资源占用</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/zh/04-settings.png" alt="设置"/></td>
+    <td><img src="Resources/screenshots/zh/07-country-picker.png" alt="国家/地区选择"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>服务器、界面语言、SSH 密钥或密码</sub></td>
+    <td align="center"><sub>国家/地区搜索、自动 GeoIP 和手动覆盖</sub></td>
+  </tr>
+  <tr>
+    <td><img src="Resources/screenshots/zh/09-history.png" alt="指标历史"/></td>
+    <td><img src="Resources/screenshots/zh/10-menubar.png" alt="菜单栏"/></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>CPU、内存、磁盘和延迟的本地历史</sub></td>
+    <td align="center"><sub>从菜单栏查看所有服务器和操作</sub></td>
+  </tr>
+</table>
 
 ## 要求
 
