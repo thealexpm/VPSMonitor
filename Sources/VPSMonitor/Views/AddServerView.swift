@@ -76,7 +76,9 @@ struct AddServerView: View {
 
             Text(L10n.text(
                 "SSH-ключи берутся из ~/.ssh. Приложение только читает данные серверов.",
-                "SSH keys are loaded from ~/.ssh. The app only reads server data."
+                "SSH keys are loaded from ~/.ssh. The app only reads server data.",
+                es: "Las claves SSH se cargan desde ~/.ssh. La app solo lee datos del servidor.",
+                zh: "SSH 密钥从 ~/.ssh 加载。应用只读取服务器数据。"
             ))
             .font(.callout)
             .foregroundStyle(.secondary)

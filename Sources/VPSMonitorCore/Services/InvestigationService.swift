@@ -69,22 +69,30 @@ public enum InvestigationService {
         if !stoppedProjects.isEmpty {
             headline = L10n.text(
                 "Нужно проверить \(stoppedProjects.count) служб(ы)",
-                "\(stoppedProjects.count) service(s) need attention"
+                "\(stoppedProjects.count) service(s) need attention",
+                es: "\(stoppedProjects.count) servicio(s) requieren atención",
+                zh: "\(stoppedProjects.count) 个服务需要关注"
             )
         } else if !highMetrics.isEmpty {
             headline = L10n.text(
                 "Есть сильные отклонения",
-                "There are major anomalies"
+                "There are major anomalies",
+                es: "Hay anomalías importantes",
+                zh: "存在明显异常"
             )
         } else if !elevatedMetrics.isEmpty {
             headline = L10n.text(
                 "Есть параметры для наблюдения",
-                "There are metrics to watch"
+                "There are metrics to watch",
+                es: "Hay métricas para observar",
+                zh: "有需要观察的指标"
             )
         } else {
             headline = L10n.text(
                 "Состояние выглядит стабильным",
-                "The server looks stable"
+                "The server looks stable",
+                es: "El servidor parece estable",
+                zh: "服务器状态看起来稳定"
             )
         }
 
@@ -140,9 +148,9 @@ public enum InvestigationService {
                 baseline: baseline,
                 currentThreshold: 85,
                 deltaThreshold: 18,
-                labelHigh: L10n.text("процессор заметно выше обычного", "CPU is significantly above baseline"),
-                labelElevated: L10n.text("процессор выше обычного уровня", "CPU is above its usual level"),
-                labelNormal: L10n.text("процессор в обычном диапазоне", "CPU is within its usual range")
+                labelHigh: L10n.text("процессор заметно выше обычного", "CPU is significantly above baseline", es: "CPU está bastante por encima de lo habitual", zh: "CPU 明显高于基线"),
+                labelElevated: L10n.text("процессор выше обычного уровня", "CPU is above its usual level", es: "CPU está por encima de lo habitual", zh: "CPU 高于通常水平"),
+                labelNormal: L10n.text("процессор в обычном диапазоне", "CPU is within its usual range", es: "CPU está dentro del rango habitual", zh: "CPU 处于通常范围")
             ),
             severity: metricSeverity(current: current, baseline: baseline, currentThreshold: 85, deltaThreshold: 18)
         )
@@ -165,9 +173,9 @@ public enum InvestigationService {
                 baseline: baseline,
                 currentThreshold: 85,
                 deltaThreshold: 12,
-                labelHigh: L10n.text("память близка к насыщению", "memory is close to saturation"),
-                labelElevated: L10n.text("память заметно выше обычной", "memory is above its usual level"),
-                labelNormal: L10n.text("память держится в норме", "memory usage is stable")
+                labelHigh: L10n.text("память близка к насыщению", "memory is close to saturation", es: "la memoria está cerca del límite", zh: "内存接近饱和"),
+                labelElevated: L10n.text("память заметно выше обычной", "memory is above its usual level", es: "la memoria está por encima de lo habitual", zh: "内存高于通常水平"),
+                labelNormal: L10n.text("память держится в норме", "memory usage is stable", es: "el uso de memoria es estable", zh: "内存使用稳定")
             ),
             severity: metricSeverity(current: current, baseline: baseline, currentThreshold: 85, deltaThreshold: 12)
         )
@@ -181,7 +189,7 @@ public enum InvestigationService {
         let delta = current - baseline
         return InvestigationMetric(
             kind: .disk,
-            title: L10n.text("Диск", "Disk"),
+            title: L10n.text("Диск", "Disk", es: "Disco", zh: "磁盘"),
             currentValueText: percentText(current),
             baselineValueText: percentText(baseline),
             deltaText: signedPercentDelta(delta),
@@ -190,9 +198,9 @@ public enum InvestigationService {
                 baseline: baseline,
                 currentThreshold: 90,
                 deltaThreshold: 8,
-                labelHigh: L10n.text("диск почти заполнен", "disk usage is approaching capacity"),
-                labelElevated: L10n.text("диск заполняется быстрее обычного", "disk usage is climbing faster than usual"),
-                labelNormal: L10n.text("по диску без тревожного сдвига", "disk usage is steady")
+                labelHigh: L10n.text("диск почти заполнен", "disk usage is approaching capacity", es: "el disco está cerca de llenarse", zh: "磁盘接近满载"),
+                labelElevated: L10n.text("диск заполняется быстрее обычного", "disk usage is climbing faster than usual", es: "el disco crece más rápido de lo habitual", zh: "磁盘占用增长快于通常"),
+                labelNormal: L10n.text("по диску без тревожного сдвига", "disk usage is steady", es: "el uso del disco es estable", zh: "磁盘使用稳定")
             ),
             severity: metricSeverity(current: current, baseline: baseline, currentThreshold: 90, deltaThreshold: 8)
         )
@@ -224,36 +232,48 @@ public enum InvestigationService {
         if !stoppedProjects.isEmpty {
             parts.append(L10n.text(
                 "Остановлены: \(stoppedProjects.prefix(3).map(\.name).joined(separator: ", "))",
-                "Stopped: \(stoppedProjects.prefix(3).map(\.name).joined(separator: ", "))"
+                "Stopped: \(stoppedProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                es: "Detenidos: \(stoppedProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                zh: "已停止：\(stoppedProjects.prefix(3).map(\.name).joined(separator: ", "))"
             ))
         }
         if !highMetrics.isEmpty {
             parts.append(L10n.text(
                 "Сильно изменились: \(highMetrics.map(\.title).joined(separator: ", "))",
-                "Major changes: \(highMetrics.map(\.title).joined(separator: ", "))"
+                "Major changes: \(highMetrics.map(\.title).joined(separator: ", "))",
+                es: "Cambios importantes: \(highMetrics.map(\.title).joined(separator: ", "))",
+                zh: "明显变化：\(highMetrics.map(\.title).joined(separator: ", "))"
             ))
         } else if !elevatedMetrics.isEmpty {
             parts.append(L10n.text(
                 "Стоит наблюдать: \(elevatedMetrics.map(\.title).joined(separator: ", "))",
-                "Watch: \(elevatedMetrics.map(\.title).joined(separator: ", "))"
+                "Watch: \(elevatedMetrics.map(\.title).joined(separator: ", "))",
+                es: "Observar: \(elevatedMetrics.map(\.title).joined(separator: ", "))",
+                zh: "建议观察：\(elevatedMetrics.map(\.title).joined(separator: ", "))"
             ))
         }
         if !newProjects.isEmpty {
             parts.append(L10n.text(
                 "После последнего стабильного состояния появились: \(newProjects.prefix(3).map(\.name).joined(separator: ", "))",
-                "Appeared since the last stable state: \(newProjects.prefix(3).map(\.name).joined(separator: ", "))"
+                "Appeared since the last stable state: \(newProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                es: "Aparecieron desde el último estado estable: \(newProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                zh: "自上次稳定状态后出现：\(newProjects.prefix(3).map(\.name).joined(separator: ", "))"
             ))
         }
         if !recoveredProjects.isEmpty {
             parts.append(L10n.text(
                 "Восстановились: \(recoveredProjects.prefix(3).map(\.name).joined(separator: ", "))",
-                "Recovered: \(recoveredProjects.prefix(3).map(\.name).joined(separator: ", "))"
+                "Recovered: \(recoveredProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                es: "Recuperados: \(recoveredProjects.prefix(3).map(\.name).joined(separator: ", "))",
+                zh: "已恢复：\(recoveredProjects.prefix(3).map(\.name).joined(separator: ", "))"
             ))
         }
         if parts.isEmpty {
             return L10n.text(
                 "Текущие метрики близки к обычным значениям за последние проверки.",
-                "Current metrics are close to the usual values from recent checks."
+                "Current metrics are close to the usual values from recent checks.",
+                es: "Las métricas actuales están cerca de los valores habituales de las últimas comprobaciones.",
+                zh: "当前指标接近最近检查中的通常值。"
             )
         }
         return parts.joined(separator: " • ")
@@ -294,28 +314,30 @@ public enum InvestigationService {
         let metricsText = metrics.prefix(4).map {
             L10n.text(
                 "- \($0.title): сейчас \($0.currentValueText), обычно \($0.baselineValueText) (\($0.deltaText))",
-                "- \($0.title): current \($0.currentValueText), usual \($0.baselineValueText) (\($0.deltaText))"
+                "- \($0.title): current \($0.currentValueText), usual \($0.baselineValueText) (\($0.deltaText))",
+                es: "- \($0.title): actual \($0.currentValueText), habitual \($0.baselineValueText) (\($0.deltaText))",
+                zh: "- \($0.title)：当前 \($0.currentValueText)，通常 \($0.baselineValueText)（\($0.deltaText)）"
             )
         }.joined(separator: "\n")
         let stoppedText = stoppedProjects.isEmpty
-            ? L10n.text("Нет остановленных служб", "No stopped services")
+            ? L10n.text("Нет остановленных служб", "No stopped services", es: "No hay servicios detenidos", zh: "没有停止的服务")
             : stoppedProjects.prefix(5).map { "- \($0.name)" }.joined(separator: "\n")
         let commandsText = suggestedCommands.map { "- \($0)" }.joined(separator: "\n")
 
         return """
-        \(L10n.text("Отчёт VPSMonitor", "VPSMonitor report"))
+        \(L10n.text("Отчёт VPSMonitor", "VPSMonitor report", es: "Informe VPSMonitor", zh: "VPSMonitor 报告"))
         \(snapshot.hostName)
         \(headline)
 
         \(summary)
 
-        \(L10n.text("Метрики: сейчас и обычно", "Metrics: current and usual"))
+        \(L10n.text("Метрики: сейчас и обычно", "Metrics: current and usual", es: "Métricas: actual y habitual", zh: "指标：当前和通常"))
         \(metricsText)
 
-        \(L10n.text("Проблемные проекты", "Problematic projects"))
+        \(L10n.text("Проблемные проекты", "Problematic projects", es: "Proyectos problemáticos", zh: "问题项目"))
         \(stoppedText)
 
-        \(L10n.text("Команды для ручной проверки", "Manual check commands"))
+        \(L10n.text("Команды для ручной проверки", "Manual check commands", es: "Comandos de comprobación manual", zh: "手动检查命令"))
         \(commandsText)
         """
     }
@@ -381,14 +403,14 @@ public enum InvestigationService {
     private static func responseSummary(current: Double, baseline: Double) -> String {
         switch responseSeverity(current: current, baseline: baseline) {
         case .high:
-            return L10n.text("SSH-проверка стала заметно медленнее", "SSH checks became much slower")
+            return L10n.text("SSH-проверка стала заметно медленнее", "SSH checks became much slower", es: "la comprobación SSH se volvió mucho más lenta", zh: "SSH 检查明显变慢")
         case .elevated:
             if current >= 1_000 && current <= baseline {
-                return L10n.text("ответ медленный, но хуже не стал", "response is slow, but not getting worse")
+                return L10n.text("ответ медленный, но хуже не стал", "response is slow, but not getting worse", es: "la respuesta es lenta, pero no empeoró", zh: "响应较慢，但没有变差")
             }
-            return L10n.text("ответ медленнее обычного", "response is slower than usual")
+            return L10n.text("ответ медленнее обычного", "response is slower than usual", es: "la respuesta es más lenta de lo habitual", zh: "响应比通常更慢")
         case .normal:
-            return L10n.text("ответ в обычном диапазоне", "response is within its usual range")
+            return L10n.text("ответ в обычном диапазоне", "response is within its usual range", es: "la respuesta está dentro del rango habitual", zh: "响应处于通常范围")
         }
     }
 

@@ -98,7 +98,7 @@ struct ProjectFilterView: View {
                 Spacer()
                 let hidden = store.hiddenCount(for: serverID)
                 if hidden > 0 {
-                    Text(L10n.text("Скрыто: \(hidden)", "Hidden: \(hidden)"))
+                    Text(L10n.text("Скрыто: \(hidden)", "Hidden: \(hidden)", es: "Oculto: \(hidden)", zh: "已隐藏：\(hidden)"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

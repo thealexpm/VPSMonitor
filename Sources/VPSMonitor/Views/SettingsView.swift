@@ -16,7 +16,8 @@ struct SettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
             Text(L10n.text("Серверы", "Servers"))
                 .font(.title2.bold())
 
@@ -39,7 +40,7 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             }
 
-            List {
+            VStack(spacing: 0) {
                 ForEach(store.configurations) { configuration in
                     HStack(spacing: 10) {
                         Text(ServerPresentation.countryMarker(for: configuration))
@@ -68,10 +69,16 @@ struct SettingsView: View {
                         .help(L10n.text("Удалить", "Delete"))
                     }
                     .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    if configuration.id != store.configurations.last?.id {
+                        Divider()
+                            .padding(.leading, 46)
+                    }
                 }
-                .onDelete(perform: store.removeServers)
             }
-            .frame(minHeight: 140)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
 
             Divider()
 
@@ -124,13 +131,18 @@ struct SettingsView: View {
 
             Text(L10n.text(
                 "SSH-ключи берутся из ~/.ssh. Приложение только читает данные серверов.",
-                "SSH keys are loaded from ~/.ssh. The app only reads server data."
+                "SSH keys are loaded from ~/.ssh. The app only reads server data.",
+                es: "Las claves SSH se cargan desde ~/.ssh. La app solo lee datos del servidor.",
+                zh: "SSH 密钥从 ~/.ssh 加载。应用只读取服务器数据。"
             ))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
-        .frame(width: 540, height: 740)
+        .frame(width: 640)
+        .frame(minHeight: 640)
         .sheet(item: $editingConfiguration) { configuration in
             EditServerSheet(configuration: configuration,
                             existingPassword: KeychainService.loadPassword(for: configuration.id)) { updated, password in
@@ -166,6 +178,10 @@ struct SettingsView: View {
         }
         .onAppear {
             NSApp.activate(ignoringOtherApps: true)
+            AppMenuLocalizer.applyRepeatedly()
+        }
+        .onChange(of: languageStore.language) {
+            AppMenuLocalizer.applyRepeatedly()
         }
     }
 

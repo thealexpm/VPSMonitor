@@ -12,7 +12,7 @@ struct InvestigationView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(L10n.text("Разбор инцидента", "Investigate"))
+                    Text(L10n.text("Разбор инцидента", "Investigate", es: "Investigar", zh: "诊断"))
                         .font(.title2.bold())
                     Text(report.headline)
                         .font(.headline)
@@ -166,7 +166,7 @@ private struct InvestigationMetricCard: View {
             Text(metric.currentValueText)
                 .font(.title3.bold())
                 .lineLimit(1)
-            Text(L10n.text("Обычно: \(metric.baselineValueText)", "Usual: \(metric.baselineValueText)"))
+            Text(L10n.text("Обычно: \(metric.baselineValueText)", "Usual: \(metric.baselineValueText)", es: "Habitual: \(metric.baselineValueText)", zh: "通常：\(metric.baselineValueText)"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

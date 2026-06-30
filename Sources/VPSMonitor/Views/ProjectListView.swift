@@ -26,7 +26,7 @@ struct ProjectListView: View {
                 }
                 Spacer()
                 if hiddenCount > 0 {
-                    Text(L10n.text("Скрыто: \(hiddenCount)", "Hidden: \(hiddenCount)"))
+                    Text(L10n.text("Скрыто: \(hiddenCount)", "Hidden: \(hiddenCount)", es: "Oculto: \(hiddenCount)", zh: "已隐藏：\(hiddenCount)"))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Button {
@@ -55,7 +55,7 @@ struct ProjectListView: View {
         .sheet(isPresented: $showingFilter) {
             ProjectFilterView(
                 serverID: serverID,
-                serverName: store.configurations.first { $0.id == serverID }?.name ?? L10n.text("Сервер", "Server"),
+                serverName: store.configurations.first { $0.id == serverID }?.name ?? L10n.text("Сервер", "Server", es: "Servidor", zh: "服务器"),
                 store: store
             )
         }
@@ -133,11 +133,13 @@ private struct ProjectRow: View {
 
     private var stateText: String {
         switch project.state {
-        case .running:    L10n.text("Работает", "Running")
-        case .stopped:    L10n.text("Требует внимания: служба не работает", "Needs attention: service is not running")
+        case .running:    L10n.text("Работает", "Running", es: "En ejecución", zh: "运行中")
+        case .stopped:    L10n.text("Требует внимания: служба не работает", "Needs attention: service is not running", es: "Requiere atención: el servicio no se está ejecutando", zh: "需要关注：服务未运行")
         case .folderOnly: L10n.text(
             "Код найден, отдельная служба или процесс не привязаны",
-            "Code found, no dedicated service or process is linked"
+            "Code found, no dedicated service or process is linked",
+            es: "Código encontrado, sin servicio o proceso dedicado vinculado",
+            zh: "发现代码，但未关联专用服务或进程"
         )
         }
     }
@@ -187,7 +189,7 @@ private struct ServiceStatRow: View {
                     .monospacedDigit()
             }
             if !service.isRunning {
-                Text(L10n.text("не запущена", "not running"))
+                Text(L10n.text("не запущена", "not running", es: "no se está ejecutando", zh: "未运行"))
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
@@ -198,7 +200,7 @@ private struct ServiceStatRow: View {
         if service.name.hasPrefix("process:") {
             let parts = service.name.split(separator: ":")
             if parts.count >= 2 {
-                return L10n.text("процесс \(parts[1])", "process \(parts[1])")
+                return L10n.text("процесс \(parts[1])", "process \(parts[1])", es: "proceso \(parts[1])", zh: "进程 \(parts[1])")
             }
         }
         return service.name.replacingOccurrences(of: ".service", with: "")

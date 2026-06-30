@@ -6,11 +6,15 @@ struct ContentView: View {
     @ObservedObject var store: MonitorStore
     @ObservedObject var updateChecker: UpdateChecker
     @State private var showingHistory = false
+    private let sidebarWidth: CGFloat = 160
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             ServerSidebarView(store: store)
-        } detail: {
+                .frame(width: sidebarWidth)
+
+            Divider()
+
             VStack(spacing: 0) {
                 if let update = updateChecker.availableUpdate {
                     UpdateBanner(update: update) { updateChecker.dismiss() }
@@ -19,6 +23,11 @@ struct ContentView: View {
                 }
                 serverDetail
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            AppMenuLocalizer.applyRepeatedly()
         }
         .sheet(item: passwordRequestBinding) { request in
             PasswordRequiredSheet(request: request) { password in
@@ -256,27 +265,26 @@ private struct ServerSidebarView: View {
     @ObservedObject var store: MonitorStore
 
     var body: some View {
-        List(store.configurations, selection: $store.selectedServerID) { configuration in
-            HStack(spacing: 10) {
-                ZStack(alignment: .bottomTrailing) {
-                    Text(ServerPresentation.countryMarker(for: configuration))
-                        .font(.title3)
-                    Circle()
-                        .fill(color(for: configuration.id))
-                        .frame(width: 8, height: 8)
-                }
-                .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(configuration.name)
-                    Text(configuration.host)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 4) {
+                ForEach(store.configurations) { configuration in
+                    Button {
+                        store.selectedServerID = configuration.id
+                    } label: {
+                        ServerSidebarRow(
+                            configuration: configuration,
+                            statusColor: color(for: configuration.id),
+                            isSelected: store.selectedServerID == configuration.id
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .tag(configuration.id)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 12)
         }
-        .listStyle(.sidebar)
-        .navigationTitle(L10n.text("Серверы", "Servers"))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.72))
     }
 
     private func color(for id: UUID) -> Color {
@@ -284,6 +292,49 @@ private struct ServerSidebarView: View {
         case .waiting, .refreshing: .secondary
         case .failed: .red
         case .loaded: store.isHealthy(serverID: id) ? .green : .orange
+        }
+    }
+}
+
+private struct ServerSidebarRow: View {
+    let configuration: MonitorConfiguration
+    let statusColor: Color
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ZStack(alignment: .bottomTrailing) {
+                Text(ServerPresentation.countryMarker(for: configuration))
+                    .font(.title3)
+                    .lineLimit(1)
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+            }
+            .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(configuration.name)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(configuration.host)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .contentShape(RoundedRectangle(cornerRadius: 7))
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.accentColor)
+            }
         }
     }
 }

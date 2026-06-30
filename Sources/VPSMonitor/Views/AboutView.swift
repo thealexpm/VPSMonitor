@@ -7,6 +7,9 @@ struct AboutView: View {
     private let githubURL   = URL(string: "https://github.com/thealexpm/VPSMonitor")!
 
     private let strings = AboutStrings.current
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,7 +20,7 @@ struct AboutView: View {
                     .resizable().frame(width: 80, height: 80)
                 Text("VPSMonitor")
                     .font(.system(size: 22, weight: .bold))
-                Text(strings.versionLabel)
+                Text(strings.versionLabel(appVersion))
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.top, 32).padding(.bottom, 24)
@@ -69,7 +72,7 @@ struct AboutView: View {
 // MARK: - Localized strings
 
 private struct AboutStrings {
-    let versionLabel: String
+    let versionPrefix: String
     let whatItDoesTitle: String
     let whatItDoesBody: String
     let howItWorksTitle: String
@@ -78,6 +81,10 @@ private struct AboutStrings {
     let trackedBullets: [String]
     let telegramButton: String
     let copyright: String
+
+    func versionLabel(_ version: String) -> String {
+        "\(versionPrefix) \(version)"
+    }
 
     static var current: AboutStrings {
         switch L10n.currentLanguage {
@@ -93,7 +100,7 @@ private struct AboutStrings {
     }
 
     static let russian = AboutStrings(
-        versionLabel: "Версия 1.0",
+        versionPrefix: "Версия",
         whatItDoesTitle: "Что делает",
         whatItDoesBody:
             "VPSMonitor — нативное macOS-приложение, которое живёт в menu bar " +
@@ -122,7 +129,7 @@ private struct AboutStrings {
     )
 
     static let english = AboutStrings(
-        versionLabel: "Version 1.0",
+        versionPrefix: "Version",
         whatItDoesTitle: "What it does",
         whatItDoesBody:
             "VPSMonitor is a native macOS app that lives in your menu bar " +
@@ -151,7 +158,7 @@ private struct AboutStrings {
     )
 
     static let spanish = AboutStrings(
-        versionLabel: "Versión 1.0",
+        versionPrefix: "Versión",
         whatItDoesTitle: "Qué hace",
         whatItDoesBody:
             "VPSMonitor es una app nativa para macOS que vive en la barra de menú " +
@@ -179,7 +186,7 @@ private struct AboutStrings {
     )
 
     static let chinese = AboutStrings(
-        versionLabel: "版本 1.0",
+        versionPrefix: "版本",
         whatItDoesTitle: "功能",
         whatItDoesBody:
             "VPSMonitor 是原生 macOS 菜单栏应用，实时显示 Linux 服务器、项目和服务状态。" +

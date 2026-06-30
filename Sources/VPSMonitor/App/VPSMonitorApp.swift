@@ -161,9 +161,10 @@ struct VPSMonitorApp: App {
         }
         credits.append(links)
 
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName:    "VPSMonitor" as NSString,
-            .applicationVersion: "1.0" as NSString,
+            .applicationVersion: appVersion as NSString,
             .version:            "" as NSString,
             .credits:            credits
         ])
@@ -176,7 +177,7 @@ private struct AboutMenuCommand: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button(L10n.text("О программе VPSMonitor", "About VPSMonitor")) {
+        Button(L10n.text("О программе VPSMonitor", "About VPSMonitor", es: "Acerca de VPSMonitor", zh: "关于 VPSMonitor")) {
             openWindow(id: "about")
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -187,7 +188,7 @@ private struct AddServerMenuCommand: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button(L10n.text("Добавить сервер...", "Add Server...")) {
+        Button(L10n.text("Добавить сервер...", "Add Server...", es: "Añadir servidor...", zh: "添加服务器...")) {
             openWindow(id: "addServer")
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -262,43 +263,31 @@ enum AppMenuLocalizer {
     @MainActor
     static func apply() {
         guard let mainMenu = NSApp.mainMenu else { return }
-        let menuTitles = [
-            L10n.text("VPSMonitor", "VPSMonitor", es: "VPSMonitor", zh: "VPSMonitor"),
-            L10n.text("Файл", "File", es: "Archivo", zh: "文件"),
-            L10n.text("Правка", "Edit", es: "Edición", zh: "编辑"),
-            L10n.text("Вид", "View", es: "Vista", zh: "视图"),
-            L10n.text("Окно", "Window", es: "Ventana", zh: "窗口"),
-            L10n.text("Справка", "Help", es: "Ayuda", zh: "帮助")
-        ]
-        for (index, title) in menuTitles.enumerated() where index < mainMenu.items.count {
-            mainMenu.items[index].title = title
-        }
+        mainMenu.delegate = AppMenuLocalizationDelegate.shared
         relabelTopLevelMenuItems(in: mainMenu)
-
         relabelMenuItems(in: mainMenu)
     }
 
     @MainActor
     private static func relabelTopLevelMenuItems(in menu: NSMenu) {
-        let groups: [(Set<String>, String)] = [
-            (["File", "Файл", "Archivo", "文件"], L10n.text("Файл", "File", es: "Archivo", zh: "文件")),
-            (["Edit", "Правка", "Edición", "编辑"], L10n.text("Правка", "Edit", es: "Edición", zh: "编辑")),
-            (["View", "Вид", "Vista", "视图"], L10n.text("Вид", "View", es: "Vista", zh: "视图")),
-            (["Window", "Окно", "Ventana", "窗口"], L10n.text("Окно", "Window", es: "Ventana", zh: "窗口")),
-            (["Help", "Справка", "Ayuda", "帮助"], L10n.text("Справка", "Help", es: "Ayuda", zh: "帮助"))
-        ]
         for item in menu.items {
-            if let match = groups.first(where: { $0.0.contains(item.title) }) {
-                item.title = match.1
-            }
+            item.title = translatedTitle(for: item.title) ?? item.title
         }
     }
 
     @MainActor
     private static func relabelMenuItems(in menu: NSMenu) {
+        menu.delegate = AppMenuLocalizationDelegate.shared
         for item in menu.items {
+            if let searchField = item.view as? NSSearchField {
+                searchField.placeholderString = L10n.text("Поиск", "Search", es: "Buscar", zh: "搜索")
+            }
             if let submenu = item.submenu {
                 relabelMenuItems(in: submenu)
+            }
+            if let translated = translatedTitle(for: item.title) {
+                item.title = translated
+                continue
             }
             guard let action = item.action else { continue }
             switch NSStringFromSelector(action) {
@@ -315,6 +304,52 @@ enum AppMenuLocalizer {
             default:
                 continue
             }
+        }
+    }
+
+    private static func translatedTitle(for title: String) -> String? {
+        let normalized = title.replacingOccurrences(of: "…", with: "...")
+        let groups: [(Set<String>, String)] = [
+            (["File", "Файл", "Archivo", "文件"], L10n.text("Файл", "File", es: "Archivo", zh: "文件")),
+            (["Edit", "Правка", "Edición", "编辑"], L10n.text("Правка", "Edit", es: "Edición", zh: "编辑")),
+            (["View", "Вид", "Vista", "视图"], L10n.text("Вид", "View", es: "Vista", zh: "视图")),
+            (["Window", "Окно", "Ventana", "窗口"], L10n.text("Окно", "Window", es: "Ventana", zh: "窗口")),
+            (["Help", "Справка", "Ayuda", "帮助"], L10n.text("Справка", "Help", es: "Ayuda", zh: "帮助")),
+            (["About VPSMonitor", "О программе VPSMonitor", "Acerca de VPSMonitor", "关于 VPSMonitor"], L10n.text("О программе VPSMonitor", "About VPSMonitor", es: "Acerca de VPSMonitor", zh: "关于 VPSMonitor")),
+            (["Settings...", "Настройки...", "Ajustes...", "设置..."], L10n.text("Настройки...", "Settings...", es: "Ajustes...", zh: "设置...")),
+            (["Services", "Службы", "Servicios", "服务"], L10n.text("Службы", "Services", es: "Servicios", zh: "服务")),
+            (["Hide VPSMonitor", "Скрыть VPSMonitor", "Ocultar VPSMonitor", "隐藏 VPSMonitor"], L10n.text("Скрыть VPSMonitor", "Hide VPSMonitor", es: "Ocultar VPSMonitor", zh: "隐藏 VPSMonitor")),
+            (["Hide Others", "Скрыть остальные", "Ocultar otras", "隐藏其他"], L10n.text("Скрыть остальные", "Hide Others", es: "Ocultar otras", zh: "隐藏其他")),
+            (["Show All", "Показать все", "Mostrar todo", "显示全部"], L10n.text("Показать все", "Show All", es: "Mostrar todo", zh: "显示全部")),
+            (["Quit VPSMonitor", "Завершить VPSMonitor", "Salir de VPSMonitor", "退出 VPSMonitor"], L10n.text("Завершить VPSMonitor", "Quit VPSMonitor", es: "Salir de VPSMonitor", zh: "退出 VPSMonitor")),
+            (["Add Server...", "Добавить сервер...", "Añadir servidor...", "添加服务器..."], L10n.text("Добавить сервер...", "Add Server...", es: "Añadir servidor...", zh: "添加服务器...")),
+            (["Edit VPS...", "Редактировать VPS...", "Editar VPS...", "编辑 VPS..."], L10n.text("Редактировать VPS...", "Edit VPS...", es: "Editar VPS...", zh: "编辑 VPS...")),
+            (["VPSMonitor Help", "Справка VPSMonitor", "Ayuda de VPSMonitor", "VPSMonitor 帮助"], L10n.text("Справка VPSMonitor", "VPSMonitor Help", es: "Ayuda de VPSMonitor", zh: "VPSMonitor 帮助")),
+            (["Undo", "Отменить", "Deshacer", "撤销"], L10n.text("Отменить", "Undo", es: "Deshacer", zh: "撤销")),
+            (["Redo", "Повторить", "Rehacer", "重做"], L10n.text("Повторить", "Redo", es: "Rehacer", zh: "重做")),
+            (["Cut", "Вырезать", "Cortar", "剪切"], L10n.text("Вырезать", "Cut", es: "Cortar", zh: "剪切")),
+            (["Copy", "Копировать", "Copiar", "复制"], L10n.text("Копировать", "Copy", es: "Copiar", zh: "复制")),
+            (["Paste", "Вставить", "Pegar", "粘贴"], L10n.text("Вставить", "Paste", es: "Pegar", zh: "粘贴")),
+            (["Delete", "Удалить", "Eliminar", "删除"], L10n.text("Удалить", "Delete", es: "Eliminar", zh: "删除")),
+            (["Select All", "Выбрать всё", "Seleccionar todo", "全选"], L10n.text("Выбрать всё", "Select All", es: "Seleccionar todo", zh: "全选")),
+            (["Start Dictation...", "Начать диктовку...", "Iniciar dictado...", "开始听写..."], L10n.text("Начать диктовку...", "Start Dictation...", es: "Iniciar dictado...", zh: "开始听写...")),
+            (["Emoji & Symbols", "Эмодзи и символы", "Emoji y símbolos", "表情与符号"], L10n.text("Эмодзи и символы", "Emoji & Symbols", es: "Emoji y símbolos", zh: "表情与符号")),
+            (["Enter Full Screen", "На весь экран", "Pantalla completa", "进入全屏幕"], L10n.text("На весь экран", "Enter Full Screen", es: "Pantalla completa", zh: "进入全屏幕")),
+            (["Minimize", "Свернуть", "Minimizar", "最小化"], L10n.text("Свернуть", "Minimize", es: "Minimizar", zh: "最小化")),
+            (["Zoom", "Масштабировать", "Zoom", "缩放"], L10n.text("Масштабировать", "Zoom", es: "Zoom", zh: "缩放")),
+            (["Bring All to Front", "Все окна на передний план", "Traer todo al frente", "全部置于前台"], L10n.text("Все окна на передний план", "Bring All to Front", es: "Traer todo al frente", zh: "全部置于前台"))
+        ]
+        return groups.first { $0.0.contains(normalized) }?.1
+    }
+}
+
+@MainActor
+private final class AppMenuLocalizationDelegate: NSObject, NSMenuDelegate {
+    static let shared = AppMenuLocalizationDelegate()
+
+    func menuWillOpen(_ menu: NSMenu) {
+        Task { @MainActor in
+            AppMenuLocalizer.apply()
         }
     }
 }
