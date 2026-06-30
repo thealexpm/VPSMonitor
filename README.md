@@ -162,6 +162,23 @@ Host my-vps
 
 Then use `my-vps` as the host inside the app.
 
+## Why not Uptime Kuma, Netdata or Better Stack?
+
+VPSMonitor is not trying to replace a full observability platform. It is for a
+different use case: a Mac user who wants to keep an eye on a few Linux VPS hosts
+without installing an agent, opening another port, or sending server data to a
+cloud service.
+
+| Tool | Best for | Trade-off |
+|---|---|---|
+| **VPSMonitor** | Native macOS, SSH-only checks, project discovery, local-first workflow | macOS-only, not a team SaaS dashboard |
+| **Uptime Kuma** | Self-hosted uptime pages and notifications | Requires running a monitoring service somewhere |
+| **Netdata** | Deep real-time metrics and dashboards | Requires an agent on each server |
+| **Better Stack** | Hosted uptime, incidents, status pages and team workflows | Cloud service, paid tiers for serious usage |
+
+If you want a lightweight menu bar view of your own VPS fleet, VPSMonitor is the
+smallest moving piece: open the app, add SSH access, and monitor from your Mac.
+
 ## How it works
 
 Every refresh cycle:
@@ -207,6 +224,8 @@ Outputs `dist/VPSMonitor-1.1.dmg` ready to upload to GitHub Releases. See commen
 
 ## Support and contributions
 
+- If VPSMonitor is useful to you, please star the repo. It helps other Mac and
+  self-hosting users discover the project.
 - Issues and feature requests: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
 - Direct contact: [@thealexpm on Telegram](https://t.me/thealexpm)
 - Pull requests welcome
