@@ -70,7 +70,7 @@ private struct CountrySelectionSheet: View {
             }
 
             TextField(
-                L10n.text("Поиск по русскому или английскому названию", "Search by Russian or English name", es: "Buscar por nombre ruso o inglés", zh: "按俄语或英语名称搜索"),
+                L10n.text("Поиск по русскому, английскому, испанскому или китайскому названию", "Search by Russian, English, Spanish or Chinese name", es: "Buscar por nombre ruso, inglés, español o chino", zh: "按俄语、英语、西班牙语或中文名称搜索"),
                 text: $query
             )
             .textFieldStyle(.roundedBorder)

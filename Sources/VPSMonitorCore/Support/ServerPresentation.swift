@@ -6,6 +6,8 @@ public enum ServerPresentation {
         public let name: String
         public let englishName: String
         public let russianName: String
+        public let spanishName: String
+        public let chineseName: String
 
         public var id: String { code }
         public var marker: String { ServerPresentation.flagEmoji(for: code) ?? "🌐" }
@@ -17,7 +19,9 @@ public enum ServerPresentation {
             return code.lowercased().contains(normalized) ||
                 name.lowercased().contains(normalized) ||
                 englishName.lowercased().contains(normalized) ||
-                russianName.lowercased().contains(normalized)
+                russianName.lowercased().contains(normalized) ||
+                spanishName.lowercased().contains(normalized) ||
+                chineseName.lowercased().contains(normalized)
         }
     }
 
@@ -25,6 +29,8 @@ public enum ServerPresentation {
         let currentLocale = L10n.locale
         let englishLocale = Locale(identifier: "en_US")
         let russianLocale = Locale(identifier: "ru_RU")
+        let spanishLocale = Locale(identifier: "es_ES")
+        let chineseLocale = Locale(identifier: "zh_Hans_CN")
 
         return Locale.Region.isoRegions.compactMap { region -> CountryOption? in
             let rawCode = region.identifier
@@ -34,11 +40,15 @@ public enum ServerPresentation {
             }
             let localizedName = currentLocale.localizedString(forRegionCode: code) ?? englishName
             let russianName = russianLocale.localizedString(forRegionCode: code) ?? englishName
+            let spanishName = spanishLocale.localizedString(forRegionCode: code) ?? englishName
+            let chineseName = chineseLocale.localizedString(forRegionCode: code) ?? englishName
             return CountryOption(
                 code: code,
                 name: localizedName,
                 englishName: englishName,
-                russianName: russianName
+                russianName: russianName,
+                spanishName: spanishName,
+                chineseName: chineseName
             )
         }
         .sorted {

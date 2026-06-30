@@ -9,15 +9,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NotificationService.requestAuthorization()
-        AppMenuLocalizer.apply()
+        localizeMenus()
         languageObserver = NotificationCenter.default.addObserver(
             forName: L10n.languageDidChangeNotification,
             object: nil,
             queue: .main
         ) { _ in
             Task { @MainActor in
-                AppMenuLocalizer.apply()
+                AppMenuLocalizer.applyRepeatedly()
             }
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        localizeMenus()
+    }
+
+    private func localizeMenus() {
+        Task { @MainActor in
+            AppMenuLocalizer.applyRepeatedly()
         }
     }
 }
@@ -238,6 +248,18 @@ enum SettingsWindowPresenter {
 
 enum AppMenuLocalizer {
     @MainActor
+    static func applyRepeatedly() {
+        apply()
+        for delay in [0.05, 0.2, 0.75, 1.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                Task { @MainActor in
+                    apply()
+                }
+            }
+        }
+    }
+
+    @MainActor
     static func apply() {
         guard let mainMenu = NSApp.mainMenu else { return }
         let menuTitles = [
@@ -251,8 +273,25 @@ enum AppMenuLocalizer {
         for (index, title) in menuTitles.enumerated() where index < mainMenu.items.count {
             mainMenu.items[index].title = title
         }
+        relabelTopLevelMenuItems(in: mainMenu)
 
         relabelMenuItems(in: mainMenu)
+    }
+
+    @MainActor
+    private static func relabelTopLevelMenuItems(in menu: NSMenu) {
+        let groups: [(Set<String>, String)] = [
+            (["File", "Файл", "Archivo", "文件"], L10n.text("Файл", "File", es: "Archivo", zh: "文件")),
+            (["Edit", "Правка", "Edición", "编辑"], L10n.text("Правка", "Edit", es: "Edición", zh: "编辑")),
+            (["View", "Вид", "Vista", "视图"], L10n.text("Вид", "View", es: "Vista", zh: "视图")),
+            (["Window", "Окно", "Ventana", "窗口"], L10n.text("Окно", "Window", es: "Ventana", zh: "窗口")),
+            (["Help", "Справка", "Ayuda", "帮助"], L10n.text("Справка", "Help", es: "Ayuda", zh: "帮助"))
+        ]
+        for item in menu.items {
+            if let match = groups.first(where: { $0.0.contains(item.title) }) {
+                item.title = match.1
+            }
+        }
     }
 
     @MainActor

@@ -29,4 +29,12 @@ final class ServerPresentationTests: XCTestCase {
 
         XCTAssertEqual(ServerPresentation.countryMarker(for: configuration), "🇩🇪")
     }
+
+    func testCountrySearchMatchesSpanishAndChineseNames() {
+        let spanishMatches = ServerPresentation.countryOptions(matching: "Alemania")
+        XCTAssertTrue(spanishMatches.contains { $0.code == "DE" })
+
+        let chineseMatches = ServerPresentation.countryOptions(matching: "德国")
+        XCTAssertTrue(chineseMatches.contains { $0.code == "DE" })
+    }
 }

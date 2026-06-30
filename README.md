@@ -330,17 +330,116 @@ Host my-vps
 
 ## Español
 
-VPSMonitor es una aplicación nativa para macOS que monitoriza varios VPS Linux por SSH, sin instalar agentes en el servidor. Muestra CPU, RAM, disco, uptime, latencia SSH, proyectos detectados, procesos activos, historial de métricas y análisis de incidentes.
+## Qué es
 
-La interfaz puede cambiarse dentro de la app entre ruso, inglés, español y chino. Los países se detectan por IP una sola vez, se guardan localmente y pueden cambiarse manualmente con búsqueda por nombre en ruso o inglés.
+VPSMonitor es una aplicación nativa para macOS que vive en la barra de menú y muestra el estado de sus servidores Linux en tiempo real. Se conecta por SSH con sus claves o contraseña, ejecuta remotamente un pequeño script bash de solo lectura y muestra los datos en un panel nativo. No instala nada en el servidor.
 
-Para compilar desde el código fuente:
+## Funciones
+
+|  |  |
+|---|---|
+| 🚀 **Sin instalación en el servidor** | No hay agente, daemon ni puerto adicional |
+| 🔒 **Privacidad local** | Los datos se quedan en el Mac. Las contraseñas se guardan en macOS Keychain |
+| 📊 **Estadísticas por servicio** | CPU y RAM por servicio o proceso, no solo métricas totales |
+| 🔍 **Descubrimiento inteligente** | Escanea `/opt`, `/var/www`, `/srv`, `/app`, `/home/*` y enlaza carpetas con `systemd` y procesos vivos |
+| 🔔 **Notificaciones** | Alertas de macOS cuando un servidor cae, se recupera o un servicio se detiene |
+| 📈 **Historial de métricas** | Historial local, sparklines y una ventana dedicada con gráficos |
+| 🧭 **Análisis de incidentes** | Detecta desviaciones, crea un snapshot copiable y sugiere comandos manuales |
+| 🌐 **Varios servidores** | Añadir, editar, eliminar y seleccionar VPS desde la barra lateral o la barra de menú |
+| 🏳️ **Banderas de país** | GeoIP por IP con caché local, búsqueda de todos los países y override manual |
+| 🌍 **Idiomas** | Ruso, inglés, español y chino, seleccionables dentro de la app |
+| 🔑 **Clave o contraseña** | Use claves SSH existentes o contraseña guardada en Keychain |
+| 🆕 **Comprobación de actualizaciones** | Avisa cuando hay una nueva versión en GitHub |
+
+## Capturas
+
+Las capturas principales están en las secciones English y Русский. La aplicación puede cambiar el idioma de la interfaz sin cambiar el idioma de macOS.
+
+## Requisitos
+
+| Requisito | Versión |
+|---|---|
+| macOS | 14 Sonoma o posterior |
+| Acceso SSH al servidor | clave o contraseña |
+| Xcode Command Line Tools | para compilar desde el código fuente |
+
+## Instalación
+
+### Opción A - descargar un release
+
+1. Descargue `VPSMonitor.dmg` desde [Releases](https://github.com/thealexpm/VPSMonitor/releases)
+2. Abra el DMG y arrastre VPSMonitor.app a `/Applications`
+3. Inicie la app, abra **Settings/Ajustes** y añada su primer VPS
+
+### Opción B - compilar desde el código fuente
 
 ```bash
 git clone https://github.com/thealexpm/VPSMonitor.git
 cd VPSMonitor
 ./script/build_and_run.sh
 ```
+
+El script compila la app, firma ad-hoc el bundle, lo deja en `dist/VPSMonitor.app` y lo inicia.
+
+## Acceso SSH
+
+VPSMonitor usa las claves que ya estén cargadas en el agente SSH o configuradas en `~/.ssh/config`. Compruebe primero:
+
+```bash
+ssh user@your.server.address "echo ok"
+```
+
+Si devuelve `ok`, VPSMonitor también podrá conectarse. Si prefiere no usar claves, añada el servidor con **Connection -> Username and password** y la contraseña se guardará en macOS Keychain.
+
+Para puertos no estándar, añada un bloque en `~/.ssh/config`:
+
+```
+Host my-vps
+    HostName your.server.address
+    User root
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+Luego use `my-vps` como host dentro de la app.
+
+## Cómo funciona
+
+En cada ciclo de comprobación:
+
+1. Abre una conexión SSH con clave o contraseña guardada
+2. Envía un script bash autónomo por `stdin` a `bash -s`
+3. El script lee `/proc/stat`, `/proc/meminfo`, `df`, `/proc/uptime`, `systemctl` y `ps`
+4. El resultado se analiza en el Mac
+5. Los proyectos se enlazan por directorio, `WorkingDirectory`, cwd y línea de comandos
+6. CPU y RAM se leen por servicio o proceso con `ps`
+7. El país del VPS se resuelve por IP una vez, se guarda localmente y puede cambiarse manualmente
+
+El servidor no se modifica. El script termina después de cada ejecución.
+
+## Estructura del proyecto
+
+```
+Sources/
+  VPSMonitor/           App SwiftUI: barra de menú, dashboard, ajustes, ayuda, about
+  VPSMonitorCore/       Modelos, SSH, Keychain, i18n, GeoIP, update checker
+  VPSMonitorProbe/      CLI para probar conectividad SSH
+Tests/
+  VPSMonitorCoreTests/  Tests del parser, incidentes y presentación de países
+Resources/
+  AppIcon.icns          Icono
+  screenshots/          Capturas para README
+script/
+  build_and_run.sh      Compilar y lanzar
+  release.sh            Build firmado y notarizado
+  package_unsigned.sh   ZIP/DMG unsigned para pruebas locales
+```
+
+## Soporte
+
+- Issues y propuestas: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
+- Contacto directo: [@thealexpm en Telegram](https://t.me/thealexpm)
+- Pull requests son bienvenidos
 
 ---
 
@@ -348,17 +447,116 @@ cd VPSMonitor
 
 ## 中文
 
-VPSMonitor 是原生 macOS 菜单栏应用，通过 SSH 监控多个 Linux VPS，无需在服务器上安装代理。它显示 CPU、内存、磁盘、运行时间、SSH 延迟、检测到的项目、运行进程、指标历史和事件分析。
+## 这是什么
 
-应用内可在俄语、英语、西班牙语和中文之间切换。国家/地区会通过 IP 解析一次并本地保存，也可以通过支持俄语和英语搜索的选择器手动覆盖。
+VPSMonitor 是原生 macOS 菜单栏应用，用于通过 SSH 实时监控多个 Linux VPS。它使用现有 SSH 密钥或密码连接服务器，远程运行一个只读 bash 脚本，并在原生仪表盘中显示结果。服务器端无需安装任何代理。
 
-从源码运行：
+## 功能
+
+|  |  |
+|---|---|
+| 🚀 **服务器零安装** | 无需代理、daemon 或额外开放端口 |
+| 🔒 **本地优先隐私** | 数据留在 Mac 上，密码存储在 macOS Keychain |
+| 📊 **按服务统计** | 显示每个服务或进程的 CPU 和内存，而不仅是总量 |
+| 🔍 **智能项目发现** | 扫描 `/opt`、`/var/www`、`/srv`、`/app`、`/home/*`，并关联 `systemd` 与运行进程 |
+| 🔔 **系统通知** | 服务器宕机、恢复或服务停止时发送 macOS 通知 |
+| 📈 **指标历史** | 本地历史、sparkline 和独立图表窗口 |
+| 🧭 **事件分析** | 标出异常，生成可复制的 incident snapshot，并给出手动检查命令 |
+| 🌐 **多服务器** | 在设置、侧边栏和菜单栏中添加、编辑、删除和切换 VPS |
+| 🏳️ **国家/地区旗帜** | 基于 IP 的 GeoIP、本地缓存、全国家搜索和手动覆盖 |
+| 🌍 **界面语言** | 俄语、英语、西班牙语和中文，可在应用内切换 |
+| 🔑 **密钥或密码** | 使用现有 SSH 密钥，或将密码安全存入 Keychain |
+| 🆕 **更新检查** | GitHub 有新版本时提示 |
+
+## 截图
+
+主要截图位于 English 和 Русский 部分。应用可以在不更改 macOS 系统语言的情况下切换界面语言。
+
+## 要求
+
+| 要求 | 版本 |
+|---|---|
+| macOS | 14 Sonoma 或更新 |
+| SSH 访问 | SSH 密钥或密码 |
+| Xcode Command Line Tools | 从源码构建时需要 |
+
+## 安装
+
+### 方式 A - 下载 release
+
+1. 从 [Releases](https://github.com/thealexpm/VPSMonitor/releases) 下载 `VPSMonitor.dmg`
+2. 打开 DMG，将 VPSMonitor.app 拖入 `/Applications`
+3. 启动应用，打开 **Settings/设置**，添加第一个 VPS
+
+### 方式 B - 从源码运行
 
 ```bash
 git clone https://github.com/thealexpm/VPSMonitor.git
 cd VPSMonitor
 ./script/build_and_run.sh
 ```
+
+脚本会编译应用、进行 ad-hoc 签名、将 `.app` 放入 `dist/VPSMonitor.app` 并启动。
+
+## SSH 访问
+
+VPSMonitor 使用已加载到 SSH agent 或写在 `~/.ssh/config` 中的密钥。先测试：
+
+```bash
+ssh user@your.server.address "echo ok"
+```
+
+如果返回 `ok`，应用也可以连接。如果不想使用密钥，可以在设置中选择 **Connection -> Username and password**，密码会存储在 macOS Keychain。
+
+非标准端口可以在 `~/.ssh/config` 中添加：
+
+```
+Host my-vps
+    HostName your.server.address
+    User root
+    Port 2222
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+然后在应用中使用 `my-vps` 作为 host。
+
+## 工作方式
+
+每次刷新时：
+
+1. 使用 SSH 密钥或保存的密码打开连接
+2. 通过 `stdin` 将自包含 bash 脚本发送给 `bash -s`
+3. 脚本读取 `/proc/stat`、`/proc/meminfo`、`df`、`/proc/uptime`、`systemctl` 和 `ps`
+4. 输出在 Mac 端解析
+5. 项目通过目录、`WorkingDirectory`、cwd 和命令行关联
+6. 每个服务或进程的 CPU/RAM 通过 `ps` 获取
+7. VPS 国家/地区通过 IP 解析一次，本地保存，也可以手动修改
+
+服务器不会被写入。脚本每次运行后都会退出。
+
+## 项目结构
+
+```
+Sources/
+  VPSMonitor/           SwiftUI 应用：菜单栏、仪表盘、设置、帮助、关于
+  VPSMonitorCore/       模型、SSH、Keychain、i18n、GeoIP、更新检查
+  VPSMonitorProbe/      用于测试 SSH 连接的 CLI
+Tests/
+  VPSMonitorCoreTests/  parser、incident 和国家显示测试
+Resources/
+  AppIcon.icns          应用图标
+  screenshots/          README 截图
+script/
+  build_and_run.sh      编译并启动
+  release.sh            签名和 notarization release 构建
+  package_unsigned.sh   本地测试用 unsigned ZIP/DMG
+```
+
+## 支持
+
+- Issues 和功能建议: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
+- 直接联系: [Telegram @thealexpm](https://t.me/thealexpm)
+- 欢迎 Pull requests
 
 ## Поддержка
 
