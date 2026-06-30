@@ -30,6 +30,7 @@ public final class MonitorStore: ObservableObject {
     }
     @Published public private(set) var loadStates: [UUID: LoadState] = [:]
     @Published public private(set) var snapshots: [UUID: ServerSnapshot] = [:]
+    @Published public private(set) var lastHealthySnapshots: [UUID: ServerSnapshot] = [:]
     @Published public private(set) var metricHistory: [UUID: [MetricSample]] = [:]
     @Published public private(set) var passwordRequest: PasswordRequest?
     /// Project IDs the user chose to hide, per server. Persisted.
@@ -38,11 +39,17 @@ public final class MonitorStore: ObservableObject {
     @Published public private(set) var newProjectIDs: [UUID: Set<String>] = [:]
 
     private let inventoryService: SSHInventoryService
+    private let geolocationService: IPGeolocationService
     private var pollingTasks: [UUID: Task<Void, Never>] = [:]
     private var pollingStarted = false
+    private static let maxStoredSamplesPerServer = 20_160
 
-    public init(inventoryService: SSHInventoryService = SSHInventoryService()) {
+    public init(
+        inventoryService: SSHInventoryService = SSHInventoryService(),
+        geolocationService: IPGeolocationService = IPGeolocationService()
+    ) {
         self.inventoryService = inventoryService
+        self.geolocationService = geolocationService
         let defaults = UserDefaults.standard
         if DemoData.isEnabled {
             // Demo mode: fictional servers, no SSH calls — used for screenshots
@@ -52,17 +59,22 @@ public final class MonitorStore: ObservableObject {
             for cfg in DemoData.configurations {
                 let snap = DemoData.snapshot(for: cfg.id)
                 self.snapshots[cfg.id] = snap
+                self.lastHealthySnapshots[cfg.id] = snap
                 self.loadStates[cfg.id] = .loaded(snap)
                 self.metricHistory[cfg.id] = Self.demoHistory(for: snap)
             }
         } else {
-            self.configurations = Self.loadConfigurations(from: defaults)
+            self.configurations = Self.loadConfigurations(from: defaults).map(Self.configurationWithLocalCountry)
             self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
             self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
+            self.metricHistory = Self.loadMetricHistory()
             normalizeSelection()
             if defaults.data(forKey: "monitor.configurations") == nil, !configurations.isEmpty {
                 saveConfigurations()
                 saveSelectedServerID()
+            }
+            for configuration in configurations where configuration.countryCodeOverride == nil {
+                scheduleCountryResolution(for: configuration.id)
             }
         }
     }
@@ -80,7 +92,8 @@ public final class MonitorStore: ObservableObject {
                 timestamp: Date().addingTimeInterval(Double(-30 * (25 - i))),
                 cpuPercent: max(0, base + jitter * 1.5),
                 memoryPercent: max(0, memBase + jitter * 0.4),
-                diskUsedPercent: max(0, diskBase + jitter * 0.05)
+                diskUsedPercent: max(0, diskBase + jitter * 0.05),
+                responseMilliseconds: max(50, 180 + jitter * 10)
             )
         }
     }
@@ -102,6 +115,11 @@ public final class MonitorStore: ObservableObject {
     public var selectedMetricHistory: [MetricSample] {
         guard let id = selectedConfiguration?.id else { return [] }
         return metricHistory[id] ?? []
+    }
+
+    public var selectedLastHealthySnapshot: ServerSnapshot? {
+        guard let id = selectedConfiguration?.id else { return nil }
+        return lastHealthySnapshots[id]
     }
 
     public func metricHistory(for serverID: UUID) -> [MetricSample] {
@@ -187,6 +205,9 @@ public final class MonitorStore: ObservableObject {
             let snapshot = try await inventoryService.fetch(configuration: configuration)
             snapshots[serverID] = snapshot
             loadStates[serverID] = .loaded(snapshot)
+            if Self.snapshotIsHealthy(snapshot) {
+                lastHealthySnapshots[serverID] = snapshot
+            }
 
             // Notify when server comes back after being down
             switch previousState {
@@ -220,12 +241,16 @@ public final class MonitorStore: ObservableObject {
                 timestamp: snapshot.checkedAt,
                 cpuPercent: Double(snapshot.cpuUsagePercent),
                 memoryPercent: memPercent,
-                diskUsedPercent: diskUsedPercent
+                diskUsedPercent: diskUsedPercent,
+                responseMilliseconds: snapshot.responseTime * 1_000
             )
             var history = metricHistory[serverID] ?? []
             history.append(sample)
-            if history.count > 30 { history.removeFirst(history.count - 30) }
+            if history.count > Self.maxStoredSamplesPerServer {
+                history.removeFirst(history.count - Self.maxStoredSamplesPerServer)
+            }
             metricHistory[serverID] = history
+            saveMetricHistory()
 
         } catch {
             let errorMessage = error.localizedDescription
@@ -273,8 +298,10 @@ public final class MonitorStore: ObservableObject {
     }
 
     public func addServer(_ configuration: MonitorConfiguration) {
-        configurations.append(configuration)
-        selectedServerID = configuration.id
+        let enriched = Self.configurationWithLocalCountry(configuration)
+        configurations.append(enriched)
+        selectedServerID = enriched.id
+        scheduleCountryResolution(for: enriched.id)
     }
 
     public func removeServers(at offsets: IndexSet) {
@@ -285,12 +312,14 @@ public final class MonitorStore: ObservableObject {
         for id in removedIDs {
             loadStates[id] = nil
             snapshots[id] = nil
+            lastHealthySnapshots[id] = nil
             metricHistory[id] = nil
             hiddenProjectIDs[id] = nil
             newProjectIDs[id] = nil
             try? KeychainService.deletePassword(for: id)   // best-effort cleanup
         }
         saveHiddenProjectIDs()
+        saveMetricHistory()
     }
 
     public func removeServer(id: UUID) {
@@ -300,7 +329,14 @@ public final class MonitorStore: ObservableObject {
 
     public func updateConfiguration(_ configuration: MonitorConfiguration) {
         guard let index = configurations.firstIndex(where: { $0.id == configuration.id }) else { return }
-        configurations[index] = configuration
+        let previous = configurations[index]
+        var updated = configuration
+        if updated.countryCodeOverride == nil && previous.host != updated.host {
+            updated.countryCode = nil
+        }
+        updated = Self.configurationWithLocalCountry(updated)
+        configurations[index] = updated
+        scheduleCountryResolution(for: updated.id)
     }
 
     public func dismissPasswordRequest() {
@@ -333,6 +369,42 @@ public final class MonitorStore: ObservableObject {
     private func isFailed(serverID: UUID) -> Bool {
         if case .failed = state(for: serverID) { return true }
         return false
+    }
+
+    private static func snapshotIsHealthy(_ snapshot: ServerSnapshot) -> Bool {
+        !snapshot.projects.contains { $0.state == .stopped }
+    }
+
+    private static func configurationWithLocalCountry(_ configuration: MonitorConfiguration) -> MonitorConfiguration {
+        var updated = configuration
+        updated.countryCode = ServerPresentation.normalizedCountryCode(updated.countryCode)
+        updated.countryCodeOverride = ServerPresentation.normalizedCountryCode(updated.countryCodeOverride)
+
+        if updated.countryCodeOverride == nil && updated.countryCode == nil {
+            updated.countryCode = ServerPresentation.inferredCountryCode(name: updated.name, host: updated.host)
+        }
+        return updated
+    }
+
+    private func scheduleCountryResolution(for serverID: UUID) {
+        guard !DemoData.isEnabled else { return }
+        guard let configuration = configurations.first(where: { $0.id == serverID }),
+              configuration.countryCodeOverride == nil else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            let code = await geolocationService.countryCode(for: configuration.host)
+            guard let code else { return }
+            applyResolvedCountryCode(code, serverID: serverID, host: configuration.host)
+        }
+    }
+
+    private func applyResolvedCountryCode(_ code: String, serverID: UUID, host: String) {
+        guard let index = configurations.firstIndex(where: { $0.id == serverID }) else { return }
+        guard configurations[index].host == host,
+              configurations[index].countryCodeOverride == nil,
+              configurations[index].countryCode != code else { return }
+        configurations[index].countryCode = code
     }
 
     private func reconcilePollingTasks() {
@@ -420,5 +492,39 @@ public final class MonitorStore: ObservableObject {
                 refreshInterval: legacyInterval > 0 ? legacyInterval : 30
             )
         ]
+    }
+
+    private func saveMetricHistory() {
+        guard !DemoData.isEnabled else { return }
+        let snapshot = metricHistory.reduce(into: [String: [MetricSample]]()) { out, pair in
+            out[pair.key.uuidString] = Array(pair.value.suffix(Self.maxStoredSamplesPerServer))
+        }
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        let url = Self.metricHistoryURL()
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private static func loadMetricHistory() -> [UUID: [MetricSample]] {
+        guard let data = try? Data(contentsOf: metricHistoryURL()),
+              let snapshot = try? JSONDecoder().decode([String: [MetricSample]].self, from: data) else {
+            return [:]
+        }
+        return snapshot.reduce(into: [:]) { out, pair in
+            if let id = UUID(uuidString: pair.key) {
+                out[id] = Array(pair.value.suffix(maxStoredSamplesPerServer))
+            }
+        }
+    }
+
+    private static func metricHistoryURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base
+            .appendingPathComponent("VPSMonitor", isDirectory: true)
+            .appendingPathComponent("metric-history-v1.json")
     }
 }

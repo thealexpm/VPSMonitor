@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/thealexpm/VPSMonitor?style=social)](https://github.com/thealexpm/VPSMonitor/stargazers)
 
-[English](#english) · [Русский](#русский) · [Download](https://github.com/thealexpm/VPSMonitor/releases) · [Support](https://t.me/thealexpm)
+[English](#english) · [Русский](#русский) · [Español](#español) · [中文](#中文) · [Download](https://github.com/thealexpm/VPSMonitor/releases) · [Support](https://t.me/thealexpm)
 
 <img src="Resources/screenshots/01-dashboard-en.png" width="640" alt="Dashboard"/>
 
@@ -32,10 +32,13 @@ VPSMonitor lives in your menu bar and shows live state of your Linux servers in 
 | 🚀 **Zero server-side setup** | No agent to install, no daemon to keep alive, no open port |
 | 🔒 **Privacy by design** | Local-first: data never leaves your Mac. Passwords stored in macOS Keychain |
 | 📊 **Per-service stats** | CPU and RAM consumed by each running service, not just totals |
-| 🔍 **Smart project discovery** | Scans `/opt`, `/var/www`, `/srv`, `/app`, `/home/*` and links projects to their `systemd` units |
+| 🔍 **Smart project discovery** | Scans `/opt`, `/var/www`, `/srv`, `/app`, `/home/*`, links projects to `systemd` units and live processes |
 | 🔔 **Push notifications** | macOS alerts when a server goes down, recovers, or a service stops |
-| 📈 **Metric history** | Sparkline charts build up as the app polls your servers |
+| 📈 **Metric history** | Local history, sparkline charts and a dedicated history window |
+| 🧭 **Incident analysis** | Highlights anomalies, builds a copyable incident snapshot and suggests manual check commands |
 | 🌐 **Multiple servers** | Add, edit, delete from Settings — selectable from the sidebar and the menu bar |
+| 🏳️ **Country flags** | IP-based country lookup with local caching, all-country search and manual override |
+| 🌍 **App languages** | Russian, English, Spanish and Chinese selectable inside the app |
 | 🔑 **Key or password auth** | Use existing SSH keys or store credentials securely in Keychain |
 | 🆕 **Auto-update check** | Tells you when a new release is available on GitHub |
 
@@ -151,8 +154,8 @@ The server is never modified. The script exits cleanly each run.
 
 ```
 Sources/
-  VPSMonitor/           SwiftUI app: menu bar, dashboard, settings, about
-  VPSMonitorCore/       Models, services, SSH, Keychain, update checker
+  VPSMonitor/           SwiftUI app: menu bar, dashboard, settings, help, about
+  VPSMonitorCore/       Models, services, SSH, Keychain, i18n, GeoIP, update checker
   VPSMonitorProbe/      CLI probe for testing SSH connectivity
 Tests/
   VPSMonitorCoreTests/  Unit tests for the inventory parser
@@ -162,6 +165,7 @@ Resources/
 script/
   build_and_run.sh      One-command build + launch (ad-hoc signed)
   release.sh            Developer-ID signed + notarized release builder
+  package_unsigned.sh   Local unsigned ZIP/DMG package for testing
 ```
 
 ## Releasing (for maintainers)
@@ -206,10 +210,13 @@ VPSMonitor — нативное macOS-приложение, которое жи�
 | 🚀 **Ноль настройки на сервере** | Никаких агентов, демонов или открытых портов |
 | 🔒 **Приватность** | Всё локально на Mac. Пароли — в Связке ключей macOS |
 | 📊 **Статистика по службам** | CPU и RAM по каждой работающей службе, а не только суммарно |
-| 🔍 **Умный поиск проектов** | Сканирует `/opt`, `/var/www`, `/srv`, `/app`, `/home/*` и связывает папки с `systemd`-юнитами |
+| 🔍 **Умный поиск проектов** | Сканирует `/opt`, `/var/www`, `/srv`, `/app`, `/home/*` и связывает папки с `systemd`-юнитами и живыми процессами |
 | 🔔 **Push-уведомления** | Алёрт macOS когда сервер падает, восстанавливается или служба остановилась |
-| 📈 **История метрик** | Спарклайн-графики накапливаются по мере опроса |
+| 📈 **История метрик** | Локальная история, спарклайны и отдельное окно графиков |
+| 🧭 **Разбор инцидента** | Подсвечивает отклонения, копирует snapshot инцидента и предлагает команды проверки |
 | 🌐 **Несколько серверов** | Добавление, редактирование, удаление в настройках |
+| 🏳️ **Флаги стран** | GeoIP lookup по IP с локальным кэшем, поиск по всем странам и ручной override |
+| 🌍 **Языки приложения** | Русский, английский, испанский и китайский переключаются внутри приложения |
 | 🔑 **Ключ или пароль** | Существующий SSH-ключ или пароль в Связке ключей |
 | 🆕 **Авто-проверка обновлений** | Сообщает когда вышла новая версия на GitHub |
 
@@ -312,8 +319,46 @@ Host my-vps
 4. Вывод парсится уже на Mac
 5. Проекты связываются по совпадению пути и `WorkingDirectory` юнитов
 6. CPU и RAM по службам берутся через `ps -p <MainPID> -o %cpu= -o rss=`
+7. Процессы без `systemd` связываются с проектами по рабочей директории и командной строке
+8. Страна VPS определяется по IP один раз, сохраняется локально и может быть изменена вручную
 
 Сервер ничего не записывает. Скрипт завершается чисто после каждого запуска.
+
+---
+
+<a id="español"></a>
+
+## Español
+
+VPSMonitor es una aplicación nativa para macOS que monitoriza varios VPS Linux por SSH, sin instalar agentes en el servidor. Muestra CPU, RAM, disco, uptime, latencia SSH, proyectos detectados, procesos activos, historial de métricas y análisis de incidentes.
+
+La interfaz puede cambiarse dentro de la app entre ruso, inglés, español y chino. Los países se detectan por IP una sola vez, se guardan localmente y pueden cambiarse manualmente con búsqueda por nombre en ruso o inglés.
+
+Para compilar desde el código fuente:
+
+```bash
+git clone https://github.com/thealexpm/VPSMonitor.git
+cd VPSMonitor
+./script/build_and_run.sh
+```
+
+---
+
+<a id="中文"></a>
+
+## 中文
+
+VPSMonitor 是原生 macOS 菜单栏应用，通过 SSH 监控多个 Linux VPS，无需在服务器上安装代理。它显示 CPU、内存、磁盘、运行时间、SSH 延迟、检测到的项目、运行进程、指标历史和事件分析。
+
+应用内可在俄语、英语、西班牙语和中文之间切换。国家/地区会通过 IP 解析一次并本地保存，也可以通过支持俄语和英语搜索的选择器手动覆盖。
+
+从源码运行：
+
+```bash
+git clone https://github.com/thealexpm/VPSMonitor.git
+cd VPSMonitor
+./script/build_and_run.sh
+```
 
 ## Поддержка
 

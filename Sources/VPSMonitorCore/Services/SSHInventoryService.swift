@@ -292,6 +292,32 @@ done
       "$(b64 "$sub")" "$(b64 "$directory")" "$(b64 "$fragment")" \
       "${restarts:-0}" "${cpu_x100:-0}" "${mem_kb:-0}"
   done
+
+# Detect app processes that are not represented as systemd services.
+# This catches bots launched via cron, pm2, screen/tmux, docker wrappers or a plain shell.
+for procdir in /proc/[0-9]*; do
+  [ -d "$procdir" ] || continue
+  pid="${procdir##*/}"
+  cwd="$(readlink "$procdir/cwd" 2>/dev/null || true)"
+  [ -n "$cwd" ] || continue
+  case "$cwd" in
+    /opt/*|/var/www/*|/srv/*|/app/*|/apps/*|/web/*|/www/*|/websites/*|/sites/*|/projects/*|/data/*|/storage/*|/docker/*|/containers/*|/root/*|/home/*/*) ;;
+    *) continue ;;
+  esac
+  comm="$(tr -d '\0' < "$procdir/comm" 2>/dev/null || true)"
+  cmdline="$(tr '\0' ' ' < "$procdir/cmdline" 2>/dev/null | cut -c 1-120 || true)"
+  [ -n "$comm" ] || comm="pid-$pid"
+  [ -n "$cmdline" ] || cmdline="$comm"
+  _ps="$(ps -p "$pid" -o %cpu= -o rss= 2>/dev/null || true)"
+  cpu_x100=0; mem_kb=0
+  if [ -n "$_ps" ]; then
+    cpu_x100="$(printf '%s\n' "$_ps" | awk '{printf "%d", $1 * 100 + 0.5}')"
+    mem_kb="$(printf '%s\n' "$_ps"   | awk '{print int($2)}')"
+  fi
+  emit SERVICE "$(b64 "process:$comm:$pid")" "$(b64 "Running process: $cmdline")" \
+    "$(b64 active)" "$(b64 running)" "$(b64 "$cwd")" "$(b64 process)" \
+    "0" "${cpu_x100:-0}" "${mem_kb:-0}"
+done
 """#
 }
 

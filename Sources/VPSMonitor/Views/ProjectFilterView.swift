@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VPSMonitorCore
 
@@ -109,6 +110,9 @@ struct ProjectFilterView: View {
             .padding(.vertical, 14)
         }
         .frame(width: 500, height: 520)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {

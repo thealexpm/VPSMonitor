@@ -5,6 +5,7 @@ import VPSMonitorCore
 struct ContentView: View {
     @ObservedObject var store: MonitorStore
     @ObservedObject var updateChecker: UpdateChecker
+    @State private var showingHistory = false
 
     var body: some View {
         NavigationSplitView {
@@ -24,6 +25,11 @@ struct ContentView: View {
                 try store.savePasswordAndRetry(serverID: request.id, password: password)
             } onCancel: {
                 store.dismissPasswordRequest()
+            }
+        }
+        .sheet(isPresented: $showingHistory) {
+            if let configuration = store.selectedConfiguration {
+                ServerHistoryView(configuration: configuration, history: store.selectedMetricHistory)
             }
         }
     }
@@ -69,6 +75,9 @@ struct ContentView: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 ResourceGrid(snapshot: snapshot, history: store.selectedMetricHistory)
+                                if let investigationReport = selectedInvestigationReport {
+                                    InvestigationView(report: investigationReport)
+                                }
                                 ProjectListView(serverID: serverID, store: store)
                                 discoveryNote(snapshot: snapshot)
                             }
@@ -80,6 +89,15 @@ struct ContentView: View {
         }
         .padding(24)
         .toolbar {
+            ToolbarItem {
+                Button {
+                    NSApp.activate(ignoringOtherApps: true)
+                    showingHistory = true
+                } label: {
+                    Label(L10n.text("История", "History"), systemImage: "chart.xyaxis.line")
+                }
+                .disabled(store.selectedConfiguration == nil)
+            }
             ToolbarItem {
                 Button {
                     Task { await store.refreshSelectedServer() }
@@ -94,8 +112,14 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(store.selectedConfiguration?.name ?? L10n.text("VPS не настроены", "VPS not configured"))
-                    .font(.largeTitle.bold())
+                HStack(spacing: 10) {
+                    if let configuration = store.selectedConfiguration {
+                        Text(ServerPresentation.countryMarker(for: configuration))
+                            .font(.largeTitle)
+                    }
+                    Text(store.selectedConfiguration?.name ?? L10n.text("VPS не настроены", "VPS not configured"))
+                        .font(.largeTitle.bold())
+                }
                 Text(store.selectedConfiguration?.host ?? L10n.text(
                     "Добавьте сервер в настройках",
                     "Add a server in Settings"
@@ -132,13 +156,25 @@ struct ContentView: View {
         return false
     }
 
+    private var selectedInvestigationReport: InvestigationReport? {
+        guard let snapshot = store.selectedSnapshot,
+              let configuration = store.selectedConfiguration else { return nil }
+        return InvestigationService.makeReport(
+            snapshot: snapshot,
+            history: store.selectedMetricHistory,
+            lastHealthySnapshot: store.selectedLastHealthySnapshot,
+            host: configuration.host,
+            user: configuration.user
+        )
+    }
+
     private func discoveryNote(snapshot: ServerSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(L10n.text("Как формируется список", "How the list is built"), systemImage: "magnifyingglass")
                 .font(.headline)
             Text(L10n.text(
-                "Приложение сканирует /opt, /var/www, /srv, /app, /home/* и другие директории, а также все активные systemd-службы. Нажмите «Настроить» чтобы скрыть ненужные пункты.",
-                "The app scans /opt, /var/www, /srv, /app, /home/* and other directories, plus all active systemd services. Click “Configure” to hide items you do not need."
+                "Приложение сканирует /opt, /var/www, /srv, /app, /home/* и другие директории, связывает их с systemd-службами и живыми процессами по рабочей директории. Сайты под общим nginx могут отображаться как найденный код без отдельной службы.",
+                "The app scans /opt, /var/www, /srv, /app, /home/* and other directories, then links them to systemd services and live processes by working directory. Sites behind a shared nginx can appear as code without a dedicated service."
             ))
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -222,8 +258,14 @@ private struct ServerSidebarView: View {
     var body: some View {
         List(store.configurations, selection: $store.selectedServerID) { configuration in
             HStack(spacing: 10) {
-                Image(systemName: icon(for: configuration.id))
-                    .foregroundStyle(color(for: configuration.id))
+                ZStack(alignment: .bottomTrailing) {
+                    Text(ServerPresentation.countryMarker(for: configuration))
+                        .font(.title3)
+                    Circle()
+                        .fill(color(for: configuration.id))
+                        .frame(width: 8, height: 8)
+                }
+                .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(configuration.name)
                     Text(configuration.host)
@@ -235,14 +277,6 @@ private struct ServerSidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle(L10n.text("Серверы", "Servers"))
-    }
-
-    private func icon(for id: UUID) -> String {
-        switch store.state(for: id) {
-        case .waiting, .refreshing: "arrow.triangle.2.circlepath"
-        case .failed: "xmark.circle.fill"
-        case .loaded: store.isHealthy(serverID: id) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-        }
     }
 
     private func color(for id: UUID) -> Color {

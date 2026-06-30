@@ -8,9 +8,8 @@ public enum ProjectInventoryBuilder {
         // Show every directory the remote script found.
         // The script already applies maxdepth 1, so each path is a meaningful entry.
         let dirProjects: [DetectedProject] = inventory.directories.map { directory in
-            let linked = inventory.services.filter {
-                $0.workingDirectory == directory ||
-                $0.workingDirectory.hasPrefix(directory + "/")
+            let linked = inventory.services.filter { service in
+                serviceReferencesDirectory(service, directory: directory)
             }
             linkedServiceNames.formUnion(linked.map(\.name))
             return makeProject(id: directory, path: directory, services: linked)
@@ -59,6 +58,13 @@ public enum ProjectInventoryBuilder {
                 .replacingOccurrences(of: ".service", with: "") ?? id
         }
         return DetectedProject(id: id, name: name, path: path, services: services, state: state)
+    }
+
+    private static func serviceReferencesDirectory(_ service: RemoteService, directory: String) -> Bool {
+        service.workingDirectory == directory ||
+        service.workingDirectory.hasPrefix(directory + "/") ||
+        service.description.contains(directory + "/") ||
+        service.description.hasSuffix(directory)
     }
 
     /// Returns true for low-level kernel/init services that are never useful

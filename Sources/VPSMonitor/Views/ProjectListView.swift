@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VPSMonitorCore
 
@@ -28,7 +29,10 @@ struct ProjectListView: View {
                     Text(L10n.text("Скрыто: \(hiddenCount)", "Hidden: \(hiddenCount)"))
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                Button { showingFilter = true } label: {
+                Button {
+                    NSApp.activate(ignoringOtherApps: true)
+                    showingFilter = true
+                } label: {
                     Label(L10n.text("Настроить", "Configure"), systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.borderless)
@@ -131,7 +135,10 @@ private struct ProjectRow: View {
         switch project.state {
         case .running:    L10n.text("Работает", "Running")
         case .stopped:    L10n.text("Требует внимания: служба не работает", "Needs attention: service is not running")
-        case .folderOnly: L10n.text("Найдена папка, служба не обнаружена", "Folder found, service not detected")
+        case .folderOnly: L10n.text(
+            "Код найден, отдельная служба или процесс не привязаны",
+            "Code found, no dedicated service or process is linked"
+        )
         }
     }
     private var stateIcon: String {
@@ -161,7 +168,7 @@ private struct ServiceStatRow: View {
                 .fill(service.isRunning ? Color.green : .orange)
                 .frame(width: 6, height: 6)
 
-            Text(service.name.replacingOccurrences(of: ".service", with: ""))
+            Text(displayName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -185,6 +192,16 @@ private struct ServiceStatRow: View {
                     .foregroundStyle(.orange)
             }
         }
+    }
+
+    private var displayName: String {
+        if service.name.hasPrefix("process:") {
+            let parts = service.name.split(separator: ":")
+            if parts.count >= 2 {
+                return L10n.text("процесс \(parts[1])", "process \(parts[1])")
+            }
+        }
+        return service.name.replacingOccurrences(of: ".service", with: "")
     }
 }
 

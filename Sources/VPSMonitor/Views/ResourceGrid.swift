@@ -6,12 +6,14 @@ struct ResourceGrid: View {
     let snapshot: ServerSnapshot
     var history: [MetricSample] = []
 
+    private let columns = [GridItem(.adaptive(minimum: 170, maximum: 230), spacing: 12)]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.text("Сервер сейчас", "Server now"))
                 .font(.title2.bold())
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: columns, spacing: 12) {
                 ResourceCard(
                     title: L10n.text("Процессор", "CPU"),
                     value: L10n.text("занято \(snapshot.cpuUsagePercent)%", "\(snapshot.cpuUsagePercent)% used"),
@@ -55,7 +57,8 @@ struct ResourceGrid: View {
                     value: MonitorFormatters.milliseconds(snapshot.responseTime),
                     detail: L10n.text("полная SSH-проверка", "full SSH check"),
                     icon: "network",
-                    color: .blue
+                    color: .blue,
+                    chartValues: history.map(\.responseMilliseconds)
                 )
                 ResourceCard(
                     title: L10n.text("Без перезагрузки", "Uptime"),
@@ -99,11 +102,14 @@ private struct ResourceCard: View {
             Label(title, systemImage: icon)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             Text(value)
                 .font(.headline)
+                .lineLimit(1)
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(color)
+                .lineLimit(1)
 
             if chartValues.count > 1 {
                 Chart {
@@ -123,12 +129,24 @@ private struct ResourceCard: View {
                 }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
-                .chartYScale(domain: 0...100)
+                .chartYScale(domain: chartDomain)
                 .frame(height: 28)
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 98, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .topLeading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(color.opacity(0.22), lineWidth: 1)
+        }
+    }
+
+    private var chartDomain: ClosedRange<Double> {
+        let maxValue = chartValues.max() ?? 100
+        if maxValue <= 100 {
+            return 0...100
+        }
+        return 0...(maxValue * 1.15)
     }
 }

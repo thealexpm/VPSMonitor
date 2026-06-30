@@ -3,7 +3,7 @@ import XCTest
 @testable import VPSMonitorCore
 
 final class LocalSSHServerImporterTests: XCTestCase {
-    func importsSSHHistoryAndKnownHostIPs() throws {
+    func testImportsSSHHistoryAndKnownHostIPs() throws {
         let home = try makeHomeDirectory()
         try makeSSHDirectory(in: home)
         try """
@@ -27,7 +27,7 @@ final class LocalSSHServerImporterTests: XCTestCase {
         XCTAssertNil(byHost["github.com"])
     }
 
-    func importsSSHConfigAliasesAndIncludes() throws {
+    func testImportsSSHConfigAliasesAndIncludes() throws {
         let home = try makeHomeDirectory()
         try makeSSHDirectory(in: home)
         try """
@@ -54,7 +54,7 @@ final class LocalSSHServerImporterTests: XCTestCase {
         XCTAssertNil(byHost["*"])
     }
 
-    func skipsHistoryTargetsWithExplicitPorts() throws {
+    func testSkipsHistoryTargetsWithExplicitPorts() throws {
         let home = try makeHomeDirectory()
         try """
         ssh -p 2222 root@198.51.100.12

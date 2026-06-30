@@ -12,6 +12,10 @@ public struct MonitorConfiguration: Codable, Hashable, Identifiable, Sendable {
     public var user: String
     public var refreshInterval: TimeInterval
     public var authMethod: AuthMethod
+    /// ISO 3166-1 alpha-2 country code detected for this server.
+    public var countryCode: String?
+    /// Manual ISO 3166-1 alpha-2 country override chosen by the user.
+    public var countryCodeOverride: String?
 
     public init(
         id: UUID = UUID(),
@@ -19,7 +23,9 @@ public struct MonitorConfiguration: Codable, Hashable, Identifiable, Sendable {
         host: String,
         user: String,
         refreshInterval: TimeInterval,
-        authMethod: AuthMethod = .sshKey
+        authMethod: AuthMethod = .sshKey,
+        countryCode: String? = nil,
+        countryCodeOverride: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -27,6 +33,12 @@ public struct MonitorConfiguration: Codable, Hashable, Identifiable, Sendable {
         self.user = user
         self.refreshInterval = refreshInterval
         self.authMethod = authMethod
+        self.countryCode = countryCode
+        self.countryCodeOverride = countryCodeOverride
+    }
+
+    public var effectiveCountryCode: String? {
+        countryCodeOverride ?? countryCode
     }
 
     public static let placeholder = MonitorConfiguration(

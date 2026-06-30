@@ -64,7 +64,16 @@ private struct UpdateStrings {
     }
 
     static var current: UpdateStrings {
-        L10n.isRussian ? .russian : .english
+        switch L10n.currentLanguage {
+        case .russian:
+            .russian
+        case .spanish:
+            .spanish
+        case .chinese:
+            .chinese
+        case .english, .system:
+            .english
+        }
     }
 
     static let russian = UpdateStrings(
@@ -79,5 +88,19 @@ private struct UpdateStrings {
         openButton: "Open release",
         dismissButton: "Later",
         titleFormat: "Version %@ available"
+    )
+
+    static let spanish = UpdateStrings(
+        body: "Hay una nueva versión de VPSMonitor. Abra la página del lanzamiento para descargarla.",
+        openButton: "Abrir lanzamiento",
+        dismissButton: "Más tarde",
+        titleFormat: "Versión %@ disponible"
+    )
+
+    static let chinese = UpdateStrings(
+        body: "VPSMonitor 有新版本可用。打开发布页面下载更新。",
+        openButton: "打开发布",
+        dismissButton: "稍后",
+        titleFormat: "版本 %@ 可用"
     )
 }

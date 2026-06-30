@@ -3,10 +3,22 @@ import SwiftUI
 import VPSMonitorCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var languageObserver: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NotificationService.requestAuthorization()
+        AppMenuLocalizer.apply()
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: L10n.languageDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                AppMenuLocalizer.apply()
+            }
+        }
     }
 }
 
@@ -15,10 +27,13 @@ struct VPSMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = MonitorStore()
     @StateObject private var updateChecker = UpdateChecker()
+    @StateObject private var languageStore = AppLanguageStore()
 
     var body: some Scene {
         WindowGroup("VPSMonitor", id: "dashboard") {
             ContentView(store: store, updateChecker: updateChecker)
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
                 .frame(minWidth: 760, minHeight: 620)
                 .task {
                     store.start()
@@ -26,25 +41,60 @@ struct VPSMonitorApp: App {
                 }
         }
         .commands {
-            // Use a View struct so @Environment(\.openWindow) is available
+            CommandGroup(replacing: .newItem) {
+                AddServerMenuCommand()
+            }
+            CommandGroup(after: .pasteboard) {
+                EditServersMenuCommand()
+            }
             CommandGroup(replacing: .appInfo) {
                 AboutMenuCommand()
             }
+            CommandGroup(replacing: .help) {
+                HelpMenuCommand()
+            }
         }
+
+        WindowGroup(L10n.text("Добавить VPS", "Add VPS"), id: "addServer") {
+            AddServerWindow(store: store)
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
+        }
+        .windowResizability(.contentSize)
+
+        WindowGroup(L10n.text("Редактировать VPS", "Edit VPS", es: "Editar VPS", zh: "编辑 VPS"), id: "editServers") {
+            EditServersWindow(store: store)
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
+        }
+        .windowResizability(.contentSize)
 
         WindowGroup(L10n.text("О программе", "About"), id: "about") {
             AboutView()
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
+        }
+        .windowResizability(.contentSize)
+
+        WindowGroup(L10n.text("Справка VPSMonitor", "VPSMonitor Help", es: "Ayuda de VPSMonitor", zh: "VPSMonitor 帮助"), id: "help") {
+            HelpView()
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
         }
         .windowResizability(.contentSize)
 
         MenuBarExtra {
             MonitorMenuView(store: store, updateChecker: updateChecker)
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
         } label: {
             Label(store.menuTitle, systemImage: store.menuSystemImage)
         }
 
         Settings {
             SettingsView(store: store)
+                .environmentObject(languageStore)
+                .id(languageStore.language.rawValue)
         }
     }
 
@@ -119,6 +169,113 @@ private struct AboutMenuCommand: View {
         Button(L10n.text("О программе VPSMonitor", "About VPSMonitor")) {
             openWindow(id: "about")
             NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+private struct AddServerMenuCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(L10n.text("Добавить сервер...", "Add Server...")) {
+            openWindow(id: "addServer")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut("n", modifiers: .command)
+    }
+}
+
+private struct EditServersMenuCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(L10n.text("Редактировать VPS...", "Edit VPS...", es: "Editar VPS...", zh: "编辑 VPS...")) {
+            openWindow(id: "editServers")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut("e", modifiers: [.command, .shift])
+    }
+}
+
+private struct HelpMenuCommand: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(L10n.text("Справка VPSMonitor", "VPSMonitor Help", es: "Ayuda de VPSMonitor", zh: "VPSMonitor 帮助")) {
+            openWindow(id: "help")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut("/", modifiers: .command)
+    }
+}
+
+private struct AddServerWindow: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var store: MonitorStore
+
+    var body: some View {
+        AddServerView(store: store) {
+            dismiss()
+        }
+    }
+}
+
+private struct EditServersWindow: View {
+    @ObservedObject var store: MonitorStore
+
+    var body: some View {
+        EditServersView(store: store)
+    }
+}
+
+enum SettingsWindowPresenter {
+    @MainActor
+    static func open() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+}
+
+enum AppMenuLocalizer {
+    @MainActor
+    static func apply() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        let menuTitles = [
+            L10n.text("VPSMonitor", "VPSMonitor", es: "VPSMonitor", zh: "VPSMonitor"),
+            L10n.text("Файл", "File", es: "Archivo", zh: "文件"),
+            L10n.text("Правка", "Edit", es: "Edición", zh: "编辑"),
+            L10n.text("Вид", "View", es: "Vista", zh: "视图"),
+            L10n.text("Окно", "Window", es: "Ventana", zh: "窗口"),
+            L10n.text("Справка", "Help", es: "Ayuda", zh: "帮助")
+        ]
+        for (index, title) in menuTitles.enumerated() where index < mainMenu.items.count {
+            mainMenu.items[index].title = title
+        }
+
+        relabelMenuItems(in: mainMenu)
+    }
+
+    @MainActor
+    private static func relabelMenuItems(in menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu {
+                relabelMenuItems(in: submenu)
+            }
+            guard let action = item.action else { continue }
+            switch NSStringFromSelector(action) {
+            case "showSettingsWindow:":
+                item.title = L10n.text("Настройки...", "Settings...", es: "Ajustes...", zh: "设置...")
+            case "terminate:":
+                item.title = L10n.text("Завершить VPSMonitor", "Quit VPSMonitor", es: "Salir de VPSMonitor", zh: "退出 VPSMonitor")
+            case "hide:":
+                item.title = L10n.text("Скрыть VPSMonitor", "Hide VPSMonitor", es: "Ocultar VPSMonitor", zh: "隐藏 VPSMonitor")
+            case "hideOtherApplications:":
+                item.title = L10n.text("Скрыть остальные", "Hide Others", es: "Ocultar otras", zh: "隐藏其他")
+            case "unhideAllApplications:":
+                item.title = L10n.text("Показать все", "Show All", es: "Mostrar todo", zh: "显示全部")
+            default:
+                continue
+            }
         }
     }
 }

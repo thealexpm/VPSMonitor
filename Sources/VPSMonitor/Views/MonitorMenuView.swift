@@ -39,6 +39,10 @@ struct MonitorMenuView: View {
             openWindow(id: "dashboard")
             NSApp.activate(ignoringOtherApps: true)
         }
+        Button(L10n.text("Добавить сервер...", "Add Server...")) {
+            openWindow(id: "addServer")
+            NSApp.activate(ignoringOtherApps: true)
+        }
         Button(L10n.text("Проверить сейчас", "Check now")) {
             store.refreshAll()
         }
@@ -54,8 +58,8 @@ struct MonitorMenuView: View {
 
         Divider()
 
-        SettingsLink {
-            Text(L10n.text("Настройки", "Settings"))
+        Button(L10n.text("Настройки", "Settings")) {
+            SettingsWindowPresenter.open()
         }
         Button(L10n.text("О программе", "About")) {
             openWindow(id: "about")

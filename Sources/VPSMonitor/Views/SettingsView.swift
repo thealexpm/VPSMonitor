@@ -1,14 +1,17 @@
+import AppKit
 import SwiftUI
 import VPSMonitorCore
 
 struct SettingsView: View {
     @ObservedObject var store: MonitorStore
+    @EnvironmentObject private var languageStore: AppLanguageStore
     @State private var editingConfiguration: MonitorConfiguration?
     @State private var newName = ""
     @State private var newHost = ""
     @State private var newUser = "root"
     @State private var newRefreshInterval: TimeInterval = 30
     @State private var newAuthMethod: AuthMethod = .sshKey
+    @State private var newCountryCodeOverride: String?
     @State private var newPassword = ""
     @State private var errorMessage: String?
 
@@ -17,9 +20,31 @@ struct SettingsView: View {
             Text(L10n.text("Серверы", "Servers"))
                 .font(.title2.bold())
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.text("Язык интерфейса", "Interface language", es: "Idioma de la interfaz", zh: "界面语言"))
+                    .font(.headline)
+                Picker("", selection: $languageStore.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.menuTitle).tag(language)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text(L10n.text(
+                    "Можно менять язык приложения без смены языка macOS.",
+                    "You can change the app language without changing macOS language.",
+                    es: "Puede cambiar el idioma de la app sin cambiar el idioma de macOS.",
+                    zh: "可以单独更改应用语言，而无需更改 macOS 语言。"
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             List {
                 ForEach(store.configurations) { configuration in
                     HStack(spacing: 10) {
+                        Text(ServerPresentation.countryMarker(for: configuration))
+                            .font(.title2)
+                            .frame(width: 26)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(configuration.name)
                                 .fontWeight(.medium)
@@ -58,6 +83,11 @@ struct SettingsView: View {
                 LabeledTextField(L10n.text("Адрес VPS", "VPS address"), text: $newHost, placeholder: "192.168.1.1")
                 LabeledTextField(L10n.text("Пользователь SSH", "SSH user"), text: $newUser, placeholder: "root")
                 RefreshIntervalPicker(selection: $newRefreshInterval)
+                CountryPicker(
+                    label: L10n.text("Страна", "Country"),
+                    selection: $newCountryCodeOverride,
+                    automaticCode: ServerPresentation.inferredCountryCode(name: newName, host: newHost)
+                )
 
                 // Auth method
                 HStack {
@@ -100,7 +130,7 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(20)
-        .frame(width: 520, height: 660)
+        .frame(width: 540, height: 740)
         .sheet(item: $editingConfiguration) { configuration in
             EditServerSheet(configuration: configuration,
                             existingPassword: KeychainService.loadPassword(for: configuration.id)) { updated, password in
@@ -134,6 +164,9 @@ struct SettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     // MARK: - Helpers
@@ -151,7 +184,9 @@ struct SettingsView: View {
             host: newHost.trimmed,
             user: newUser.trimmed,
             refreshInterval: newRefreshInterval,
-            authMethod: newAuthMethod
+            authMethod: newAuthMethod,
+            countryCode: ServerPresentation.inferredCountryCode(name: newName.trimmed, host: newHost.trimmed),
+            countryCodeOverride: newCountryCodeOverride
         )
         do {
             if newAuthMethod == .password {
@@ -163,7 +198,7 @@ struct SettingsView: View {
             return
         }
         newName = ""; newHost = ""; newUser = "root"
-        newRefreshInterval = 30; newAuthMethod = .sshKey; newPassword = ""
+        newRefreshInterval = 30; newAuthMethod = .sshKey; newCountryCodeOverride = nil; newPassword = ""
     }
 
     @ViewBuilder
@@ -189,12 +224,14 @@ struct SettingsView: View {
 
 // MARK: - Edit sheet
 
-private struct EditServerSheet: View {
+struct EditServerSheet: View {
     @State private var name: String
     @State private var host: String
     @State private var user: String
     @State private var refreshInterval: TimeInterval
     @State private var authMethod: AuthMethod
+    @State private var countryCode: String?
+    @State private var countryCodeOverride: String?
     @State private var password = ""  // empty = keep existing
 
     private let configuration: MonitorConfiguration
@@ -217,6 +254,8 @@ private struct EditServerSheet: View {
         _user            = State(initialValue: configuration.user)
         _refreshInterval = State(initialValue: configuration.refreshInterval)
         _authMethod      = State(initialValue: configuration.authMethod)
+        _countryCode     = State(initialValue: configuration.countryCode)
+        _countryCodeOverride = State(initialValue: configuration.countryCodeOverride)
     }
 
     private var canSave: Bool {
@@ -236,6 +275,11 @@ private struct EditServerSheet: View {
                 LabeledTextField(L10n.text("Адрес VPS", "VPS address"), text: $host, placeholder: "192.168.1.1")
                 LabeledTextField(L10n.text("Пользователь SSH", "SSH user"), text: $user, placeholder: "root")
                 RefreshIntervalPicker(selection: $refreshInterval)
+                CountryPicker(
+                    label: L10n.text("Страна", "Country"),
+                    selection: $countryCodeOverride,
+                    automaticCode: automaticCountryCode
+                )
 
                 HStack {
                     Text(L10n.text("Подключение", "Connection"))
@@ -278,7 +322,9 @@ private struct EditServerSheet: View {
                         host: host.trimmed,
                         user: user.trimmed,
                         refreshInterval: refreshInterval,
-                        authMethod: authMethod
+                        authMethod: authMethod,
+                        countryCode: countryCode,
+                        countryCodeOverride: countryCodeOverride
                     )
                     onSave(updated, password.isEmpty ? nil : password)
                 }
@@ -289,6 +335,13 @@ private struct EditServerSheet: View {
         }
         .padding(24)
         .frame(width: 460)
+    }
+
+    private var automaticCountryCode: String? {
+        if name.trimmed == configuration.name && host.trimmed == configuration.host {
+            return countryCode ?? ServerPresentation.inferredCountryCode(name: name, host: host)
+        }
+        return ServerPresentation.inferredCountryCode(name: name, host: host)
     }
 }
 
