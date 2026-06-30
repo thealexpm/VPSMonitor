@@ -648,14 +648,8 @@ script/
 - Issues 和功能建议: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
 - 直接联系: [Telegram @thealexpm](https://t.me/thealexpm)
 - 欢迎 Pull requests
+- 感谢 [Angel-M-R](https://github.com/Angel-M-R) 的第一个公开 fork，以及关于本地 SSH 服务器导入、SSH 密码 fallback、更清晰连接错误和隐藏项目感知健康状态的想法。
 
-## Поддержка
+## 许可证
 
-- Issues и предложения: [GitHub Issues](https://github.com/thealexpm/VPSMonitor/issues)
-- Прямой контакт: [@thealexpm в Telegram](https://t.me/thealexpm)
-- Pull requests приветствуются
-- Спасибо [Angel-M-R](https://github.com/Angel-M-R) за первый публичный fork и идеи для импорта локальных SSH-серверов, fallback на SSH-пароль, более понятных ошибок подключения и статуса сервера с учётом скрытых проектов.
-
-## Лицензия
-
-MIT — см. [LICENSE](LICENSE).
+MIT — 见 [LICENSE](LICENSE)。
