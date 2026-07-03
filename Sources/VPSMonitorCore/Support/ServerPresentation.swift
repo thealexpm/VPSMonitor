@@ -85,9 +85,6 @@ public enum ServerPresentation {
         if isPrivateHost(host) {
             return nil
         }
-        if let code = countryCodeForKnownHost(host) {
-            return code
-        }
         if containsAny(searchable, ["usa", "us-", "united states", "america", "new-york", "nyc", "ashburn"]) {
             return "US"
         }
@@ -143,18 +140,4 @@ public enum ServerPresentation {
         host.hasPrefix("10.") || host.hasPrefix("192.168.") || host.hasPrefix("172.16.")
     }
 
-    private static func countryCodeForKnownHost(_ host: String) -> String? {
-        // Local fallback for VPS providers/IPs already observed by this app.
-        // This avoids a runtime dependency on an external GeoIP service.
-        if host == "79.137.206.86" || host.hasPrefix("79.137.206.") {
-            return "FI"
-        }
-        if host == "194.113.106.176" || host.hasPrefix("194.113.106.") {
-            return "RU"
-        }
-        if host == "186.246.2.237" || host.hasPrefix("186.246.2.") {
-            return "RU"
-        }
-        return nil
-    }
 }

@@ -14,6 +14,8 @@ public struct SSHInventoryService: Sendable {
         let responseTime = Date().timeIntervalSince(startedAt)
         let inventory = RemoteInventoryParser.parse(output)
         let projects = ProjectInventoryBuilder.build(from: inventory)
+        let vpn = await buildVPNSnapshot(from: inventory)
+        let domainRouting = buildDomainRoutingSnapshot(from: inventory)
         return ServerSnapshot(
             hostName: inventory.hostName.isEmpty ? configuration.host : inventory.hostName,
             checkedAt: Date(),
@@ -28,7 +30,54 @@ public struct SSHInventoryService: Sendable {
             systemServiceCount: ProjectInventoryBuilder.hiddenSystemServiceCount(
                 in: inventory,
                 projects: projects
+            ),
+            vpn: vpn,
+            domainRouting: domainRouting
+        )
+    }
+
+    private func buildVPNSnapshot(from inventory: RemoteInventory) async -> VPNSnapshot? {
+        guard !inventory.vpnStatuses.isEmpty else { return nil }
+
+        let geolocation = IPGeolocationService()
+        var countryCodes: [String: String] = [:]
+        for ip in Set(inventory.vpnClients.map(\.publicIP)).filter({ !$0.isEmpty }) {
+            countryCodes[ip] = await geolocation.countryCode(for: ip)
+        }
+
+        let enrichedClients = inventory.vpnClients.map { client in
+            client.withCountryCode(countryCodes[client.publicIP] ?? nil)
+        }
+
+        let stacks = inventory.vpnStatuses.map { status in
+            let clients = enrichedClients.filter { $0.stack == status.stack }
+            return VPNStatus(
+                stack: status.stack,
+                serviceName: status.serviceName,
+                activeState: status.activeState,
+                subState: status.subState,
+                activeConnections: status.activeConnections,
+                listeningPorts: status.listeningPorts,
+                details: status.details,
+                clients: clients
             )
+        }
+        return VPNSnapshot(stacks: stacks)
+    }
+
+    private func buildDomainRoutingSnapshot(from inventory: RemoteInventory) -> DomainRoutingSnapshot? {
+        guard let header = inventory.domainRouteHeader else { return nil }
+        return DomainRoutingSnapshot(
+            dnsServiceState: header.dnsServiceState,
+            routeServiceState: header.routeServiceState,
+            whitelistDomains: inventory.domainWhitelistDomains.sorted(),
+            candidateDomains: inventory.domainRouteCandidates.sorted {
+                if $0.queryCount == $1.queryCount { return $0.domain < $1.domain }
+                return $0.queryCount > $1.queryCount
+            },
+            routedIPCount: header.routedIPCount,
+            configPath: header.configPath,
+            logPath: header.logPath
         )
     }
 
@@ -242,6 +291,196 @@ emit METRIC memory_total_bytes "$(( memory_total_kb * 1024 ))"
 emit METRIC disk_free_bytes "$disk_free"
 emit METRIC disk_total_bytes "$disk_total"
 emit METRIC uptime_seconds "${uptime%%.*}"
+
+emit_vpn_status() {
+  stack="$1"; service="$2"; active="$3"; sub="$4"; connections="$5"; ports="$6"; details="$7"
+  emit VPN "$(b64 "$stack")" "$(b64 "$service")" "$(b64 "$active")" "$(b64 "$sub")" \
+    "${connections:-0}" "$(b64 "$ports")" "$(b64 "$details")"
+}
+
+emit_vpn_client() {
+  stack="$1"; connection_id="$2"; identity="$3"; public_ip="$4"; virtual_ip="$5"
+  connected_for="$6"; protocol="$7"; proposal="$8"; bytes_in="$9"; bytes_out="${10}"
+  packets_in="${11}"; packets_out="${12}"; last_activity="${13}"
+  emit VPNCLIENT "$(b64 "$stack")" "$(b64 "$connection_id")" "$(b64 "$identity")" \
+    "$(b64 "$public_ip")" "$(b64 "$virtual_ip")" "$(b64 "$connected_for")" \
+    "$(b64 "$protocol")" "$(b64 "$proposal")" "${bytes_in:-0}" "${bytes_out:-0}" \
+    "${packets_in:-0}" "${packets_out:-0}" "${last_activity:-0}"
+}
+
+service_state() {
+  svc="$1"
+  systemctl show "$svc" -p ActiveState -p SubState --no-pager 2>/dev/null |
+    awk -F= '
+      /^ActiveState=/ { active=$2 }
+      /^SubState=/ { substate=$2 }
+      END {
+        if (active == "") active="inactive";
+        if (substate == "") substate="dead";
+        print active "|" substate
+      }'
+}
+
+udp_ports() {
+  pattern="$1"
+  ss -H -lunp 2>/dev/null |
+    awk '{print $4}' |
+    sed -n 's/.*:\([0-9][0-9]*\)$/\1/p' |
+    grep -E "$pattern" |
+    sort -n -u |
+    paste -sd, - 2>/dev/null
+}
+
+detect_strongswan() {
+  svc=""
+  for candidate in strongswan-starter.service strongswan.service charon-systemd.service ipsec.service; do
+    if systemctl list-unit-files "$candidate" --no-legend --no-pager 2>/dev/null | grep -q "$candidate"; then
+      svc="$candidate"; break
+    fi
+  done
+  [ -n "$svc" ] || pgrep -x charon >/dev/null 2>&1 || return 0
+  [ -n "$svc" ] || svc="charon"
+  state="$(service_state "$svc")"
+  active="${state%%|*}"; sub="${state#*|}"
+  status="$(ipsec statusall 2>/dev/null || swanctl --list-sas 2>/dev/null || true)"
+  connections="$(printf '%s\n' "$status" | sed -n 's/.*Security Associations (\([0-9][0-9]*\) up,.*/\1/p' | head -n 1)"
+  [ -n "$connections" ] || connections="$(printf '%s\n' "$status" | grep -Ei 'ESTABLISHED|IKE_SA' | wc -l | tr -d ' ')"
+  details="$(printf '%s\n' "$status" | sed -n '1,4p' | tr '\n' '; ' | cut -c 1-180)"
+  [ -n "$details" ] || details="IKEv2/IPsec service detected"
+  emit_vpn_status "strongSwan" "$svc" "$active" "$sub" "$connections" "$(udp_ports '^(500|4500)$')" "$details"
+  parse_strongswan_clients "$status"
+}
+
+parse_strongswan_clients() {
+  status_text="$1"
+  connection_id=""; identity=""; public_ip=""; virtual_ip=""; connected_for=""
+  proposal=""; bytes_in=0; bytes_out=0; packets_in=0; packets_out=0; last_activity=0
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*([^:]+):[[:space:]]ESTABLISHED[[:space:]](.+)[[:space:]]ago,.*\.\.\.([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\[ ]]; then
+      connection_id="${BASH_REMATCH[1]}"
+      connected_for="${BASH_REMATCH[2]} ago"
+      public_ip="${BASH_REMATCH[3]}"
+      identity=""; virtual_ip=""; proposal=""
+      bytes_in=0; bytes_out=0; packets_in=0; packets_out=0; last_activity=0
+    elif [[ "$line" =~ Remote[[:space:]]EAP[[:space:]]identity:[[:space:]](.*)$ ]]; then
+      identity="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ IKE[[:space:]]proposal:[[:space:]](.*)$ ]]; then
+      proposal="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ([0-9]+)[[:space:]]bytes_i[[:space:]]\(([0-9]+)[[:space:]]pkts,[[:space:]]([0-9]+)s[[:space:]]ago\),[[:space:]]([0-9]+)[[:space:]]bytes_o[[:space:]]\(([0-9]+)[[:space:]]pkts,[[:space:]]([0-9]+)s[[:space:]]ago\) ]]; then
+      bytes_in="${BASH_REMATCH[1]}"
+      packets_in="${BASH_REMATCH[2]}"
+      last_in="${BASH_REMATCH[3]}"
+      bytes_out="${BASH_REMATCH[4]}"
+      packets_out="${BASH_REMATCH[5]}"
+      last_out="${BASH_REMATCH[6]}"
+      if [ "$last_in" -le "$last_out" ] 2>/dev/null; then last_activity="$last_in"; else last_activity="$last_out"; fi
+    elif [[ "$line" =~ ===[[:space:]]([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/[0-9]+ ]]; then
+      virtual_ip="${BASH_REMATCH[1]}"
+      if [ -n "$connection_id" ] && [ -n "$public_ip" ]; then
+        emit_vpn_client "strongSwan" "$connection_id" "$identity" "$public_ip" "$virtual_ip" \
+          "$connected_for" "IKEv2/IPsec" "$proposal" "$bytes_in" "$bytes_out" \
+          "$packets_in" "$packets_out" "$last_activity"
+      fi
+    fi
+  done <<< "$status_text"
+}
+
+detect_wireguard() {
+  command -v wg >/dev/null 2>&1 || return 0
+  interfaces="$(wg show interfaces 2>/dev/null || true)"
+  [ -n "$interfaces" ] || return 0
+  peers=0
+  details=""
+  for iface in $interfaces; do
+    count="$(wg show "$iface" peers 2>/dev/null | wc -l | tr -d ' ')"
+    peers=$((peers + count))
+    details="${details}${iface}: ${count} peers; "
+  done
+  service="wg-quick@${interfaces%% *}.service"
+  state="$(service_state "$service")"
+  emit_vpn_status "WireGuard" "$service" "${state%%|*}" "${state#*|}" "$peers" "$(udp_ports '^(51820|51821)$')" "$details"
+}
+
+detect_openvpn() {
+  units="$(systemctl list-units 'openvpn*.service' --all --no-legend --no-pager 2>/dev/null | awk '{print $1}')"
+  [ -n "$units" ] || pgrep -x openvpn >/dev/null 2>&1 || return 0
+  if [ -z "$units" ]; then units="openvpn"; fi
+  for svc in $units; do
+    state="$(service_state "$svc")"
+    details="$(journalctl -u "$svc" --since '30 minutes ago' --no-pager 2>/dev/null | grep -Ei 'peer connection|initialization sequence completed|client' | tail -n 2 | tr '\n' '; ' | cut -c 1-180)"
+    [ -n "$details" ] || details="OpenVPN service detected"
+    emit_vpn_status "OpenVPN" "$svc" "${state%%|*}" "${state#*|}" "0" "$(udp_ports '^(1194)$')" "$details"
+  done
+}
+
+detect_strongswan
+detect_wireguard
+detect_openvpn
+
+detect_domain_routing() {
+  config="/etc/vpsm-domain-router/domains.conf"
+  log="/var/log/vpsm-domain-router-dns.log"
+  [ -f "$config" ] || return 0
+
+  dns_state="$(systemctl is-active vpsm-domain-dns.service 2>/dev/null || true)"
+  route_state="$(systemctl is-active vpsm-domain-route.service 2>/dev/null || true)"
+  if [ "$route_state" != "active" ] &&
+     ipset list vpsm_wgexit4 >/dev/null 2>&1 &&
+     ip rule show 2>/dev/null | grep -q 'fwmark 0x194' &&
+     ip route show table 194 2>/dev/null | grep -q '^default '; then
+    route_state="active"
+  fi
+  routed_count="$(ipset list vpsm_wgexit4 2>/dev/null | awk -F: '/Number of entries:/ {gsub(/ /, "", $2); print $2}' | head -n 1)"
+  [ -n "$routed_count" ] || routed_count=0
+
+  emit DOMAINROUTE "$(b64 "$dns_state")" "$(b64 "$route_state")" "$routed_count" "$(b64 "$config")" "$(b64 "$log")"
+
+  whitelist_tmp="$(mktemp)"
+  sed -n 's#^[[:space:]]*ipset=/\([^/][^/]*\)/vpsm_wgexit4[[:space:]]*$#\1#p' "$config" |
+    awk 'NF {print tolower($0)}' |
+    sort -u > "$whitelist_tmp"
+
+  while IFS= read -r domain; do
+    [ -n "$domain" ] || continue
+    emit DOMAINWHITELIST "$(b64 "$domain")"
+  done < "$whitelist_tmp"
+
+  if [ -f "$log" ]; then
+    tail -n 2500 "$log" 2>/dev/null |
+      awk '
+        /query\[[A-Z0-9]+\]/ {
+          domain="";
+          for (i=1; i<=NF; i++) {
+            if ($i ~ /^query\[[A-Z0-9]+\]$/ && (i + 1) <= NF) {
+              domain=$(i + 1);
+            }
+          }
+          if (domain == "") next;
+          gsub(/\.$/, "", domain);
+          domain=tolower(domain);
+          if (domain ~ /^[0-9.]+$/) next;
+          if (domain ~ /(in-addr|ip6)\.arpa$/) next;
+          counts[domain]++;
+          last[domain]=$1 " " $2 " " $3;
+        }
+        END {
+          for (domain in counts) print counts[domain] "|" last[domain] "|" domain;
+        }' |
+      sort -t'|' -k1,1nr -k3,3 |
+      head -n 80 |
+      while IFS='|' read -r count last domain; do
+        [ -n "$domain" ] || continue
+        if ! grep -Fxq "$domain" "$whitelist_tmp"; then
+          emit DOMAINCANDIDATE "$(b64 "$domain")" "${count:-0}" "$(b64 "$last")"
+        fi
+      done
+  fi
+
+  rm -f "$whitelist_tmp"
+}
+
+detect_domain_routing
 
 # Scan all common locations where projects, sites, bots, VPNs live
 for scandir in \

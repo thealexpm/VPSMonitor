@@ -12,6 +12,8 @@ public struct ServerSnapshot: Sendable {
     public let uptimeSeconds: Int
     public let projects: [DetectedProject]
     public let systemServiceCount: Int
+    public let vpn: VPNSnapshot?
+    public let domainRouting: DomainRoutingSnapshot?
 
     public init(
         hostName: String,
@@ -24,7 +26,9 @@ public struct ServerSnapshot: Sendable {
         diskTotalBytes: Int64,
         uptimeSeconds: Int,
         projects: [DetectedProject],
-        systemServiceCount: Int
+        systemServiceCount: Int,
+        vpn: VPNSnapshot? = nil,
+        domainRouting: DomainRoutingSnapshot? = nil
     ) {
         self.hostName = hostName
         self.checkedAt = checkedAt
@@ -37,6 +41,179 @@ public struct ServerSnapshot: Sendable {
         self.uptimeSeconds = uptimeSeconds
         self.projects = projects
         self.systemServiceCount = systemServiceCount
+        self.vpn = vpn
+        self.domainRouting = domainRouting
+    }
+}
+
+public struct DomainRoutingSnapshot: Hashable, Sendable {
+    public let dnsServiceState: String
+    public let routeServiceState: String
+    public let whitelistDomains: [String]
+    public let candidateDomains: [DomainRouteCandidate]
+    public let routedIPCount: Int
+    public let configPath: String
+    public let logPath: String
+
+    public init(
+        dnsServiceState: String,
+        routeServiceState: String,
+        whitelistDomains: [String],
+        candidateDomains: [DomainRouteCandidate],
+        routedIPCount: Int,
+        configPath: String,
+        logPath: String
+    ) {
+        self.dnsServiceState = dnsServiceState
+        self.routeServiceState = routeServiceState
+        self.whitelistDomains = whitelistDomains
+        self.candidateDomains = candidateDomains
+        self.routedIPCount = routedIPCount
+        self.configPath = configPath
+        self.logPath = logPath
+    }
+
+    public var isHealthy: Bool {
+        dnsServiceState == "active" && routeServiceState == "active"
+    }
+}
+
+public struct DomainRouteCandidate: Identifiable, Hashable, Sendable {
+    public let domain: String
+    public let queryCount: Int
+    public let lastSeen: String
+
+    public init(domain: String, queryCount: Int, lastSeen: String) {
+        self.domain = domain
+        self.queryCount = queryCount
+        self.lastSeen = lastSeen
+    }
+
+    public var id: String { domain }
+}
+
+public struct VPNSnapshot: Hashable, Sendable {
+    public let stacks: [VPNStatus]
+
+    public init(stacks: [VPNStatus]) {
+        self.stacks = stacks
+    }
+
+    public var isHealthy: Bool {
+        !stacks.isEmpty && stacks.allSatisfy(\.isHealthy)
+    }
+
+    public var totalActiveConnections: Int {
+        stacks.reduce(0) { $0 + $1.activeConnections }
+    }
+}
+
+public struct VPNStatus: Identifiable, Hashable, Sendable {
+    public let stack: String
+    public let serviceName: String
+    public let activeState: String
+    public let subState: String
+    public let activeConnections: Int
+    public let listeningPorts: [String]
+    public let details: String
+    public let clients: [VPNClient]
+
+    public init(
+        stack: String,
+        serviceName: String,
+        activeState: String,
+        subState: String,
+        activeConnections: Int,
+        listeningPorts: [String],
+        details: String,
+        clients: [VPNClient] = []
+    ) {
+        self.stack = stack
+        self.serviceName = serviceName
+        self.activeState = activeState
+        self.subState = subState
+        self.activeConnections = activeConnections
+        self.listeningPorts = listeningPorts
+        self.details = details
+        self.clients = clients
+    }
+
+    public var id: String { "\(stack)-\(serviceName)" }
+
+    public var isHealthy: Bool {
+        activeState == "active" && (subState == "running" || subState == "exited")
+    }
+}
+
+public struct VPNClient: Identifiable, Hashable, Sendable {
+    public let stack: String
+    public let connectionID: String
+    public let identity: String
+    public let publicIP: String
+    public let countryCode: String?
+    public let virtualIP: String
+    public let connectedFor: String
+    public let protocolName: String
+    public let proposal: String
+    public let bytesIn: Int64
+    public let bytesOut: Int64
+    public let packetsIn: Int
+    public let packetsOut: Int
+    public let lastActivitySeconds: Int?
+
+    public init(
+        stack: String,
+        connectionID: String,
+        identity: String,
+        publicIP: String,
+        countryCode: String? = nil,
+        virtualIP: String,
+        connectedFor: String,
+        protocolName: String,
+        proposal: String,
+        bytesIn: Int64,
+        bytesOut: Int64,
+        packetsIn: Int,
+        packetsOut: Int,
+        lastActivitySeconds: Int?
+    ) {
+        self.stack = stack
+        self.connectionID = connectionID
+        self.identity = identity
+        self.publicIP = publicIP
+        self.countryCode = countryCode
+        self.virtualIP = virtualIP
+        self.connectedFor = connectedFor
+        self.protocolName = protocolName
+        self.proposal = proposal
+        self.bytesIn = bytesIn
+        self.bytesOut = bytesOut
+        self.packetsIn = packetsIn
+        self.packetsOut = packetsOut
+        self.lastActivitySeconds = lastActivitySeconds
+    }
+
+    public var id: String {
+        "\(stack)-\(connectionID)-\(publicIP)-\(virtualIP)"
+    }
+
+    public func withCountryCode(_ countryCode: String?) -> VPNClient {
+        VPNClient(
+            stack: stack,
+            connectionID: connectionID,
+            identity: identity,
+            publicIP: publicIP,
+            countryCode: countryCode,
+            virtualIP: virtualIP,
+            connectedFor: connectedFor,
+            protocolName: protocolName,
+            proposal: proposal,
+            bytesIn: bytesIn,
+            bytesOut: bytesOut,
+            packetsIn: packetsIn,
+            packetsOut: packetsOut,
+            lastActivitySeconds: lastActivitySeconds
+        )
     }
 }
 
@@ -98,7 +275,7 @@ public struct RemoteService: Hashable, Sendable {
     }
 
     public var isRunning: Bool {
-        activeState == "active" && subState == "running"
+        activeState == "active" && (subState == "running" || subState == "exited")
     }
 }
 

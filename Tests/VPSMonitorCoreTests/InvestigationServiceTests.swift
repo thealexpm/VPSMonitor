@@ -151,7 +151,7 @@ final class InvestigationServiceTests: XCTestCase {
         ]
 
         let current = ServerSnapshot(
-            hostName: "handsome-azure.ptr.network",
+            hostName: "sample-node.example.net",
             checkedAt: .now,
             responseTime: 2.355,
             cpuUsagePercent: 0,
@@ -168,7 +168,7 @@ final class InvestigationServiceTests: XCTestCase {
             snapshot: current,
             history: history,
             lastHealthySnapshot: current,
-            host: "194.113.106.176",
+            host: "203.0.113.176",
             user: "root"
         )
 

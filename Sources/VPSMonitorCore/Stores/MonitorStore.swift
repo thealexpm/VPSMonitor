@@ -39,6 +39,7 @@ public final class MonitorStore: ObservableObject {
     @Published public private(set) var newProjectIDs: [UUID: Set<String>] = [:]
 
     private let inventoryService: SSHInventoryService
+    private let domainRoutingService: DomainRoutingService
     private let geolocationService: IPGeolocationService
     private var pollingTasks: [UUID: Task<Void, Never>] = [:]
     private var pollingStarted = false
@@ -46,9 +47,11 @@ public final class MonitorStore: ObservableObject {
 
     public init(
         inventoryService: SSHInventoryService = SSHInventoryService(),
+        domainRoutingService: DomainRoutingService = DomainRoutingService(),
         geolocationService: IPGeolocationService = IPGeolocationService()
     ) {
         self.inventoryService = inventoryService
+        self.domainRoutingService = domainRoutingService
         self.geolocationService = geolocationService
         let defaults = UserDefaults.standard
         if DemoData.isEnabled {
@@ -351,6 +354,12 @@ public final class MonitorStore: ObservableObject {
         configurations[index] = configuration
         passwordRequest = nil
         Task { await refresh(serverID: serverID) }
+    }
+
+    public func applyDomainWhitelist(serverID: UUID, domains: [String]) async throws {
+        guard let configuration = configurations.first(where: { $0.id == serverID }) else { return }
+        try await domainRoutingService.applyWhitelist(configuration: configuration, domains: domains)
+        await refresh(serverID: serverID)
     }
 
     public func state(for serverID: UUID) -> LoadState {

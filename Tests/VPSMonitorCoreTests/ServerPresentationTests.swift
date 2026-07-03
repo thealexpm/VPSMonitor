@@ -3,14 +3,13 @@ import XCTest
 
 final class ServerPresentationTests: XCTestCase {
     func testUsesNameHintsForCountryMarker() {
-        XCTAssertEqual(ServerPresentation.countryMarker(name: "usa-vpn", host: "193.233.131.167"), "🇺🇸")
+        XCTAssertEqual(ServerPresentation.countryMarker(name: "us-node", host: "203.0.113.10"), "🇺🇸")
         XCTAssertEqual(ServerPresentation.countryMarker(name: "frankfurt-node", host: "203.0.113.10"), "🇩🇪")
     }
 
-    func testUsesKnownObservedIPPrefixes() {
-        XCTAssertEqual(ServerPresentation.countryMarker(name: "keen-lime", host: "79.137.206.86"), "🇫🇮")
-        XCTAssertEqual(ServerPresentation.countryMarker(name: "handsome-azure", host: "194.113.106.176"), "🇷🇺")
-        XCTAssertEqual(ServerPresentation.countryMarker(name: "Younica", host: "186.246.2.237"), "🇷🇺")
+    func testUsesDomainHintsForCountryMarker() {
+        XCTAssertEqual(ServerPresentation.countryMarker(name: "service", host: "example.ru"), "🇷🇺")
+        XCTAssertEqual(ServerPresentation.countryMarker(name: "service", host: "example.fi"), "🇫🇮")
     }
 
     func testFallsBackToLocalMarkerForPrivateHosts() {
@@ -19,8 +18,8 @@ final class ServerPresentationTests: XCTestCase {
 
     func testManualCountryOverrideWinsOverDetectedCountry() {
         let configuration = MonitorConfiguration(
-            name: "usa-vpn",
-            host: "193.233.131.167",
+            name: "us-node",
+            host: "203.0.113.10",
             user: "root",
             refreshInterval: 30,
             countryCode: "US",

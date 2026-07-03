@@ -78,6 +78,8 @@ public enum ProjectInventoryBuilder {
            name.hasSuffix(".mount")  || name.hasSuffix(".swap")   ||
            name.hasSuffix(".target") || name.hasSuffix(".path")   ||
            name.hasSuffix(".timer")  { return true }
+        // These are represented by the dedicated domain-routing card.
+        if name == "vpsm-domain-route.service" || name == "vpsm-domain-dns.service" { return true }
         return false
     }
 

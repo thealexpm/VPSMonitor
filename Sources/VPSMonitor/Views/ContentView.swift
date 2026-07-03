@@ -6,6 +6,8 @@ struct ContentView: View {
     @ObservedObject var store: MonitorStore
     @ObservedObject var updateChecker: UpdateChecker
     @State private var showingHistory = false
+    @State private var showingVPNDetails = false
+    @State private var showingDomainRouting = false
     private let sidebarWidth: CGFloat = 160
 
     var body: some View {
@@ -39,6 +41,22 @@ struct ContentView: View {
         .sheet(isPresented: $showingHistory) {
             if let configuration = store.selectedConfiguration {
                 ServerHistoryView(configuration: configuration, history: store.selectedMetricHistory)
+            }
+        }
+        .sheet(isPresented: $showingVPNDetails) {
+            if let vpn = store.selectedSnapshot?.vpn {
+                VPNDetailsSheet(vpn: vpn)
+            }
+        }
+        .sheet(isPresented: $showingDomainRouting) {
+            if let configuration = store.selectedConfiguration,
+               let domainRouting = store.selectedSnapshot?.domainRouting {
+                DomainRoutingSheet(
+                    configuration: configuration,
+                    snapshot: domainRouting
+                ) { domains in
+                    try await store.applyDomainWhitelist(serverID: configuration.id, domains: domains)
+                }
             }
         }
     }
@@ -84,6 +102,16 @@ struct ContentView: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 ResourceGrid(snapshot: snapshot, history: store.selectedMetricHistory)
+                                if let vpn = snapshot.vpn {
+                                    VPNStatusView(vpn: vpn) {
+                                        showingVPNDetails = true
+                                    }
+                                }
+                                if let domainRouting = snapshot.domainRouting {
+                                    DomainRoutingStatusView(snapshot: domainRouting) {
+                                        showingDomainRouting = true
+                                    }
+                                }
                                 if let investigationReport = selectedInvestigationReport {
                                     InvestigationView(report: investigationReport)
                                 }
@@ -381,6 +409,824 @@ private struct StatusBadge: View {
         case .failed: .red
         case .loaded:
             hasVisibleStoppedProjects ? .orange : .green
+        }
+    }
+}
+
+private struct DomainRoutingStatusView: View {
+    let snapshot: DomainRoutingSnapshot
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(L10n.text("Маршрутизация доменов", "Domain routing"), systemImage: "arrow.triangle.branch")
+                        .font(.title2.bold())
+                    Spacer()
+                    Label(statusTitle, systemImage: snapshot.isHealthy ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(snapshot.isHealthy ? .green : .orange)
+                    Image(systemName: "chevron.right")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 18) {
+                    metric(L10n.text("Whitelist", "Whitelist"), "\(snapshot.whitelistDomains.count)")
+                    metric(L10n.text("Кандидаты", "Candidates"), "\(snapshot.candidateDomains.count)")
+                    metric(L10n.text("IP в маршруте", "Routed IPs"), "\(snapshot.routedIPCount)")
+                    metric(L10n.text("DNS", "DNS"), snapshot.dnsServiceState)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke((snapshot.isHealthy ? Color.green : Color.orange).opacity(0.22), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statusTitle: String {
+        snapshot.isHealthy
+            ? L10n.text("Готово", "Ready")
+            : L10n.text("Нужно внимание", "Needs attention")
+    }
+
+    private func metric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct DomainRoutingSheet: View {
+    let configuration: MonitorConfiguration
+    let snapshot: DomainRoutingSnapshot
+    let onApply: ([String]) async throws -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var whitelistText: String
+    @State private var ignoredCandidateDomains: Set<String>
+    @State private var isApplying = false
+    @State private var errorMessage: String?
+
+    init(
+        configuration: MonitorConfiguration,
+        snapshot: DomainRoutingSnapshot,
+        onApply: @escaping ([String]) async throws -> Void
+    ) {
+        self.configuration = configuration
+        self.snapshot = snapshot
+        self.onApply = onApply
+        _whitelistText = State(initialValue: snapshot.whitelistDomains.joined(separator: "\n"))
+        _ignoredCandidateDomains = State(initialValue: Self.loadIgnoredCandidateDomains())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(L10n.text("Маршрутизация доменов", "Domain routing"), systemImage: "arrow.triangle.branch")
+                    .font(.title2.bold())
+                Spacer()
+                Text(configuration.host)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .help(L10n.text("Закрыть", "Close"))
+                .accessibilityLabel(L10n.text("Закрыть", "Close"))
+            }
+
+            HStack(spacing: 18) {
+                detailMetric(L10n.text("DNS-служба", "DNS service"), snapshot.dnsServiceState)
+                detailMetric(L10n.text("Маршрут", "Route"), snapshot.routeServiceState)
+                detailMetric(L10n.text("IP в ipset", "IPs in ipset"), "\(snapshot.routedIPCount)")
+                detailMetric(L10n.text("Файл", "File"), snapshot.configPath)
+            }
+
+            HSplitView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.text("Whitelist", "Whitelist"))
+                        .font(.headline)
+                    TextEditor(text: $whitelistText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minWidth: 320, idealWidth: 380, minHeight: 320)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                        }
+                    HStack {
+                        Button {
+                            compactWhitelist()
+                        } label: {
+                            Label(L10n.text("Укрупнить", "Compact"), systemImage: "arrow.triangle.merge")
+                        }
+                        .buttonStyle(.bordered)
+                        .help(L10n.text(
+                            "Свернуть поддомены до основного домена сервиса",
+                            "Collapse subdomains to the service root domain"
+                        ))
+                        Spacer()
+                        Text(L10n.text(
+                            "\(currentDomains().count) доменов",
+                            "\(currentDomains().count) domains"
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Text(L10n.text(
+                        "Один домен на строку, без https:// и путей. Пример: yandex.ru",
+                        "One domain per line, without https:// or paths. Example: yandex.ru"
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.trailing, 8)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(L10n.text("Кандидаты из DNS-истории", "Candidates from DNS history"))
+                            .font(.headline)
+                        Spacer()
+                        Text("\(visibleCandidates.count)")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if visibleCandidates.isEmpty {
+                        ContentUnavailableView(
+                            L10n.text("Кандидатов пока нет", "No candidates yet"),
+                            systemImage: "list.bullet.rectangle",
+                            description: Text(L10n.text(
+                                "Когда VPN-клиенты начнут открывать сайты через DNS этого сервера, здесь появятся домены для ручного отбора.",
+                                "When VPN clients start resolving sites through this server DNS, domains will appear here for manual review."
+                            ))
+                        )
+                        .frame(minWidth: 360, minHeight: 320)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(visibleCandidates) { candidate in
+                                    DomainCandidateRow(candidate: candidate) {
+                                        addCandidate(candidate.domain)
+                                    } onIgnore: {
+                                        ignoreCandidate(candidate.domain)
+                                    }
+                                }
+                            }
+                        }
+                        .frame(minWidth: 360, idealWidth: 460, minHeight: 320)
+                    }
+
+                    if !ignoredCandidateDomains.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(L10n.text(
+                                    "Не предлагать: \(ignoredCandidateDomains.count)",
+                                    "Do not suggest: \(ignoredCandidateDomains.count)"
+                                ))
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(L10n.text("Очистить", "Clear")) {
+                                    clearIgnoredCandidates()
+                                }
+                                .font(.caption)
+                                .buttonStyle(.plain)
+                            }
+
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 6) {
+                                    ForEach(Array(ignoredCandidateDomains).sorted(), id: \.self) { domain in
+                                        IgnoredDomainRow(domain: domain) {
+                                            restoreCandidate(domain)
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(maxHeight: 110)
+                        }
+                        .padding(10)
+                        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .padding(.leading, 8)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Text(L10n.text(
+                    "Автосписок показывает домены, которые запрашивали VPN-клиенты. Решение добавить в whitelist остаётся ручным.",
+                    "The auto list shows domains requested by VPN clients. Adding them to the whitelist remains manual."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Spacer()
+                Button(L10n.text("Применить", "Apply")) {
+                    apply()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isApplying)
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 900, idealWidth: 980, minHeight: 620, idealHeight: 700)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private var visibleCandidates: [DomainRouteCandidate] {
+        let whitelisted = Set(currentDomains())
+        let grouped = Dictionary(grouping: snapshot.candidateDomains) { candidate in
+            Self.compactDomain(candidate.domain)
+        }
+        return grouped.values.compactMap { candidates in
+            guard let first = candidates.first else { return nil }
+            let domain = Self.compactDomain(first.domain)
+            guard !whitelisted.contains(domain) else { return nil }
+            guard !ignoredCandidateDomains.contains(domain) else { return nil }
+            let queryCount = candidates.reduce(0) { $0 + $1.queryCount }
+            let lastSeen = candidates.max {
+                Self.lastSeenSortKey($0.lastSeen) < Self.lastSeenSortKey($1.lastSeen)
+            }?.lastSeen ?? first.lastSeen
+            return DomainRouteCandidate(domain: domain, queryCount: queryCount, lastSeen: lastSeen)
+        }
+        .sorted {
+            let leftDate = Self.lastSeenSortKey($0.lastSeen)
+            let rightDate = Self.lastSeenSortKey($1.lastSeen)
+            if leftDate != rightDate { return leftDate > rightDate }
+            if $0.queryCount == $1.queryCount { return $0.domain < $1.domain }
+            return $0.queryCount > $1.queryCount
+        }
+    }
+
+    private func detailMetric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func addCandidate(_ domain: String) {
+        var domains = currentDomains()
+        let compacted = Self.compactDomain(domain)
+        guard !domains.contains(compacted) else { return }
+        domains.append(compacted)
+        whitelistText = domains.sorted().joined(separator: "\n")
+    }
+
+    private func ignoreCandidate(_ domain: String) {
+        let compacted = Self.compactDomain(domain)
+        ignoredCandidateDomains.insert(compacted)
+        Self.saveIgnoredCandidateDomains(ignoredCandidateDomains)
+    }
+
+    private func restoreCandidate(_ domain: String) {
+        ignoredCandidateDomains.remove(Self.compactDomain(domain))
+        Self.saveIgnoredCandidateDomains(ignoredCandidateDomains)
+    }
+
+    private func clearIgnoredCandidates() {
+        ignoredCandidateDomains.removeAll()
+        Self.saveIgnoredCandidateDomains(ignoredCandidateDomains)
+    }
+
+    private func compactWhitelist() {
+        whitelistText = Self.compactDomains(currentDomains()).joined(separator: "\n")
+    }
+
+    private func currentDomains() -> [String] {
+        whitelistText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func compactDomains(_ domains: [String]) -> [String] {
+        Array(Set(domains.map(compactDomain))).sorted()
+    }
+
+    private static func compactDomain(_ domain: String) -> String {
+        let normalized = domain
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let labels = normalized.split(separator: ".").map(String.init)
+        guard labels.count >= 3 else { return normalized }
+
+        let publicSuffixesWithTwoLabels: Set<String> = [
+            "com.au", "com.br", "com.cn", "com.tr", "co.jp", "co.kr",
+            "co.uk", "com.ua", "net.ua", "org.ua"
+        ]
+        let lastTwo = labels.suffix(2).joined(separator: ".")
+        if publicSuffixesWithTwoLabels.contains(lastTwo), labels.count >= 3 {
+            return labels.suffix(3).joined(separator: ".")
+        }
+
+        return labels.suffix(2).joined(separator: ".")
+    }
+
+    private static func lastSeenSortKey(_ value: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d HH:mm:ss yyyy"
+        let year = Calendar.current.component(.year, from: Date())
+        return formatter.date(from: "\(value) \(year)") ?? .distantPast
+    }
+
+    private static let ignoredCandidateDomainsKey = "domainRouting.ignoredCandidateDomains"
+
+    private static func loadIgnoredCandidateDomains() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: ignoredCandidateDomainsKey) ?? [])
+    }
+
+    private static func saveIgnoredCandidateDomains(_ domains: Set<String>) {
+        UserDefaults.standard.set(Array(domains).sorted(), forKey: ignoredCandidateDomainsKey)
+    }
+
+    private func apply() {
+        isApplying = true
+        errorMessage = nil
+        let domains = currentDomains()
+        Task {
+            do {
+                try await onApply(domains)
+                await MainActor.run {
+                    isApplying = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isApplying = false
+                }
+            }
+        }
+    }
+}
+
+private struct DomainCandidateRow: View {
+    let candidate: DomainRouteCandidate
+    let onAdd: () -> Void
+    let onIgnore: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(candidate.domain)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Label(metadata.title, systemImage: metadata.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(L10n.text(
+                    "\(candidate.queryCount) DNS-запросов • последнее: \(candidate.lastSeen)",
+                    "\(candidate.queryCount) DNS queries • last: \(candidate.lastSeen)"
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                onIgnore()
+            } label: {
+                Image(systemName: "eye.slash")
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L10n.text("Больше не предлагать", "Do not suggest again"))
+            .accessibilityLabel(L10n.text("Больше не предлагать", "Do not suggest again"))
+            Button {
+                onAdd()
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.text("Добавить в whitelist", "Add to whitelist"))
+            .accessibilityLabel(L10n.text("Добавить в whitelist", "Add to whitelist"))
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var metadata: DomainRouteMetadata {
+        DomainRouteClassifier.metadata(for: candidate.domain)
+    }
+}
+
+private struct IgnoredDomainRow: View {
+    let domain: String
+    let onRestore: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(domain)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(DomainRouteClassifier.metadata(for: domain).title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer()
+            Button {
+                onRestore()
+            } label: {
+                Image(systemName: "arrow.uturn.backward.circle")
+                    .font(.body)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.text("Вернуть в кандидаты", "Restore to candidates"))
+            .accessibilityLabel(L10n.text("Вернуть в кандидаты", "Restore to candidates"))
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct DomainRouteMetadata {
+    let title: String
+    let systemImage: String
+}
+
+private enum DomainRouteClassifier {
+    static func metadata(for domain: String) -> DomainRouteMetadata {
+        let value = domain.lowercased()
+        let rules: [(suffix: String, title: String, image: String)] = [
+            ("avito.ru", "Avito / объявления", "bag"),
+            ("avito.st", "Avito / изображения и CDN", "photo"),
+            ("avito.cdnvideo.ru", "Avito / видео CDN", "play.rectangle"),
+            ("vk.com", "VK / соцсеть, сообщения, API", "message"),
+            ("vk.ru", "VK / соцсеть, сообщения, API", "message"),
+            ("vk-portal.net", "VK / служебный CDN", "network"),
+            ("oneme.ru", "VK OneMe / мессенджер", "message"),
+            ("wildberries.ru", "Wildberries / маркетплейс", "cart"),
+            ("wb.ru", "Wildberries / короткий домен", "cart"),
+            ("wbcontent.net", "Wildberries / контент CDN", "photo"),
+            ("paywb.com", "Wildberries / платежи", "creditcard"),
+            ("t-bank-app.ru", "T-Bank / мобильное приложение", "creditcard"),
+            ("tinkoff.ru", "T-Bank / банк и инвестиции", "creditcard"),
+            ("tinkoffinsurance.ru", "T-Bank / страхование", "cross.case"),
+            ("ozon.ru", "Ozon / маркетплейс", "cart"),
+            ("ok.ru", "Одноклассники / соцсеть", "person.2"),
+            ("okcdn.ru", "Одноклассники / CDN", "network"),
+            ("yandex.ru", "Яндекс / сервисы", "magnifyingglass"),
+            ("yandex.net", "Яндекс / API, CDN, AppMetrica", "network"),
+            ("ya.ru", "Яндекс / поиск", "magnifyingglass"),
+            ("mail.ru", "VK / Mail.ru сервисы и реклама", "envelope"),
+            ("targethunter.ru", "TargetHunter / VK-инструменты", "scope"),
+            ("google.com", "Google / аккаунты и сервисы", "g.circle"),
+            ("googleapis.com", "Google / API", "network"),
+            ("gstatic.com", "Google / статические ресурсы", "photo"),
+            ("gvt2.com", "Google / служебная доставка", "network"),
+            ("apple.com", "Apple / сервисы", "apple.logo"),
+            ("apple-dns.net", "Apple / DNS и iCloud", "network"),
+            ("icloud.com", "Apple / iCloud", "icloud"),
+            ("anthropic.com", "Anthropic / Claude", "sparkles"),
+            ("claude.ai", "Anthropic / Claude", "sparkles"),
+            ("claudemcpcontent.com", "Anthropic / Claude MCP content", "sparkles"),
+            ("chatgpt.com", "OpenAI / ChatGPT", "sparkles"),
+            ("openai.com", "OpenAI / API и ChatGPT", "sparkles"),
+            ("github.com", "GitHub / разработка", "chevron.left.forwardslash.chevron.right"),
+            ("akamai.net", "Akamai / CDN", "network"),
+            ("cloudflare.com", "Cloudflare / CDN", "network"),
+            ("cloudfront.net", "AWS CloudFront / CDN", "network")
+        ]
+
+        if let match = rules.first(where: { value == $0.suffix || value.hasSuffix("." + $0.suffix) }) {
+            return DomainRouteMetadata(title: match.title, systemImage: match.image)
+        }
+        return DomainRouteMetadata(
+            title: L10n.text("Неизвестный сервис / проверь вручную", "Unknown service / review manually"),
+            systemImage: "questionmark.circle"
+        )
+    }
+}
+
+private struct VPNStatusView: View {
+    let vpn: VPNSnapshot
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(L10n.text("VPN", "VPN"), systemImage: "lock.shield")
+                        .font(.title2.bold())
+                    Spacer()
+                    Label(summaryTitle, systemImage: vpn.isHealthy ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(vpn.isHealthy ? .green : .orange)
+                    Image(systemName: "chevron.right")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(vpn.stacks) { status in
+                    VPNStackRow(status: status)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke((vpn.isHealthy ? Color.green : Color.orange).opacity(0.22), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var summaryTitle: String {
+        if vpn.totalActiveConnections > 0 {
+            return L10n.text(
+                "\(vpn.totalActiveConnections) активных подключений",
+                "\(vpn.totalActiveConnections) active connections"
+            )
+        }
+        return vpn.isHealthy
+            ? L10n.text("Службы работают", "Services running")
+            : L10n.text("Нужно внимание", "Needs attention")
+    }
+}
+
+private struct VPNStackRow: View {
+    let status: VPNStatus
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: status.isHealthy ? "lock.circle.fill" : "lock.trianglebadge.exclamationmark")
+                .font(.title3)
+                .foregroundStyle(status.isHealthy ? .green : .orange)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(status.stack)
+                        .font(.headline)
+                    Text(status.serviceName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                HStack(spacing: 14) {
+                    metric(
+                        title: L10n.text("Статус", "Status"),
+                        value: status.isHealthy
+                            ? L10n.text("Работает", "Running")
+                            : L10n.text("Нужно внимание", "Needs attention")
+                    )
+                    metric(
+                        title: L10n.text("Клиенты", "Clients"),
+                        value: "\(status.activeConnections)"
+                    )
+                    metric(
+                        title: L10n.text("UDP-порты", "UDP ports"),
+                        value: status.listeningPorts.isEmpty ? "n/a" : status.listeningPorts.joined(separator: ", ")
+                    )
+                }
+
+                if !status.details.isEmpty {
+                    Text(status.details)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func metric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct VPNDetailsSheet: View {
+    let vpn: VPNSnapshot
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Label(L10n.text("VPN-подключения", "VPN connections"), systemImage: "lock.shield")
+                    .font(.title2.bold())
+                Spacer()
+                Text(summary)
+                    .font(.headline)
+                    .foregroundStyle(vpn.isHealthy ? .green : .orange)
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .help(L10n.text("Закрыть", "Close"))
+                .accessibilityLabel(L10n.text("Закрыть", "Close"))
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(vpn.stacks) { status in
+                        VPNStackDetails(status: status)
+                    }
+
+                    explanation
+                }
+                .padding(.bottom, 4)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 760, idealWidth: 860, minHeight: 520, idealHeight: 620)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private var summary: String {
+        L10n.text(
+            "\(vpn.totalActiveConnections) активных",
+            "\(vpn.totalActiveConnections) active"
+        )
+    }
+
+    private var explanation: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.text("Расшифровка", "Legend"))
+                .font(.headline)
+            Text(L10n.text(
+                "Входящий и исходящий трафик показан с точки зрения VPN-сервера за текущую сессию. Мгновенная скорость требует сравнения двух соседних проверок; сейчас поле активности показывает, сколько секунд назад был последний пакет. Название устройства strongSwan обычно не передаёт, поэтому здесь отображается EAP identity и внутренний VPN-IP.",
+                "Inbound and outbound traffic is shown from the VPN server perspective for the current session. Live speed requires comparing two adjacent checks; for now activity shows how many seconds ago the last packet was seen. strongSwan usually does not receive a device name, so the sheet shows EAP identity and internal VPN IP."
+            ))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct VPNStackDetails: View {
+    let status: VPNStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(status.stack)
+                        .font(.headline)
+                    Text(status.serviceName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Label(status.isHealthy ? L10n.text("Работает", "Running") : L10n.text("Нужно внимание", "Needs attention"),
+                      systemImage: status.isHealthy ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(status.isHealthy ? .green : .orange)
+            }
+
+            HStack(spacing: 18) {
+                detailMetric(L10n.text("Клиенты", "Clients"), "\(status.activeConnections)")
+                detailMetric(L10n.text("UDP-порты", "UDP ports"), status.listeningPorts.isEmpty ? "n/a" : status.listeningPorts.joined(separator: ", "))
+                detailMetric(L10n.text("Systemd", "Systemd"), "\(status.activeState)/\(status.subState)")
+            }
+
+            if status.clients.isEmpty {
+                Text(L10n.text("Активных клиентов сейчас нет.", "No active clients right now."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(status.clients) { client in
+                        VPNClientRow(client: client)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func detailMetric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+        }
+    }
+}
+
+private struct VPNClientRow: View {
+    let client: VPNClient
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(client.identity.isEmpty ? L10n.text("Неизвестный клиент", "Unknown client") : client.identity)
+                    .font(.headline)
+                Text(client.connectionID)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(client.protocolName)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.blue)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], alignment: .leading, spacing: 10) {
+                item(L10n.text("Публичный IP", "Public IP"), publicIPTitle)
+                item(L10n.text("VPN-IP", "VPN IP"), client.virtualIP.isEmpty ? "n/a" : client.virtualIP)
+                item(L10n.text("Подключён", "Connected"), client.connectedFor.isEmpty ? "n/a" : client.connectedFor)
+                item(L10n.text("Активность", "Activity"), activityTitle)
+                item(L10n.text("Получено", "Received"), MonitorFormatters.bytes(client.bytesIn))
+                item(L10n.text("Отправлено", "Sent"), MonitorFormatters.bytes(client.bytesOut))
+                item(L10n.text("Пакеты in/out", "Packets in/out"), "\(client.packetsIn)/\(client.packetsOut)")
+            }
+
+            if !client.proposal.isEmpty {
+                Text(client.proposal)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var publicIPTitle: String {
+        let flag = client.countryCode.flatMap(ServerPresentation.flagEmoji(for:)) ?? "🌐"
+        return client.publicIP.isEmpty ? "n/a" : "\(flag) \(client.publicIP)"
+    }
+
+    private var activityTitle: String {
+        guard let seconds = client.lastActivitySeconds else { return "n/a" }
+        return L10n.text("\(seconds) сек. назад", "\(seconds)s ago")
+    }
+
+    private func item(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 }
