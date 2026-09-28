@@ -68,6 +68,13 @@ final class InvestigationServiceTests: XCTestCase {
         XCTAssertTrue(report.suggestedCommands.contains("ssh 'deploy@198.51.100.10'"))
         XCTAssertTrue(report.suggestedCommands.contains("systemctl status 'api.service' --no-pager"))
         XCTAssertTrue(report.shareText.contains("api"))
+        XCTAssertEqual(report.attentionKeys, [
+            "metric:cpu",
+            "metric:memory",
+            "metric:response",
+            "project:api"
+        ])
+        XCTAssertEqual(report.attentionKey, "metric:cpu|metric:memory|metric:response|project:api")
     }
 
     func testQuotesSuggestedCommands() {
@@ -208,6 +215,7 @@ final class InvestigationServiceTests: XCTestCase {
 
         XCTAssertEqual(report.metrics.first?.severity, .normal)
         XCTAssertFalse(report.needsManualCheck)
+        XCTAssertNil(report.attentionKey)
         XCTAssertTrue(report.headline.contains("стабил") || report.headline.contains("stable"))
     }
 }

@@ -39,6 +39,23 @@ public struct InvestigationReport: Sendable {
     public let suggestedCommands: [String]
     public let needsManualCheck: Bool
     public let shareText: String
+
+    /// Stable identities of the individual actionable problems in this report.
+    /// Each stopped project and high-severity metric is acknowledged separately
+    /// so an unstable metric cannot invalidate an already reviewed project.
+    public var attentionKeys: Set<String> {
+        var keys = Set(stoppedProjects.map { "project:\($0.id)" })
+        keys.formUnion(metrics
+            .filter { $0.severity == .high }
+            .map { "metric:\($0.kind.rawValue)" })
+        return keys
+    }
+
+    /// Backward-compatible aggregate representation of the current problems.
+    public var attentionKey: String? {
+        guard !attentionKeys.isEmpty else { return nil }
+        return attentionKeys.sorted().joined(separator: "|")
+    }
 }
 
 public enum InvestigationService {

@@ -9,7 +9,7 @@ struct SettingsView: View {
     @State private var newName = ""
     @State private var newHost = ""
     @State private var newUser = "root"
-    @State private var newRefreshInterval: TimeInterval = 30
+    @State private var newRefreshInterval: TimeInterval = 60
     @State private var newAuthMethod: AuthMethod = .sshKey
     @State private var newCountryCodeOverride: String?
     @State private var newPassword = ""
@@ -89,7 +89,7 @@ struct SettingsView: View {
                 LabeledTextField(L10n.text("Название", "Name"), text: $newName, placeholder: L10n.text("Мой сервер", "My server"))
                 LabeledTextField(L10n.text("Адрес VPS", "VPS address"), text: $newHost, placeholder: "192.168.1.1")
                 LabeledTextField(L10n.text("Пользователь SSH", "SSH user"), text: $newUser, placeholder: "root")
-                RefreshIntervalPicker(selection: $newRefreshInterval)
+                RefreshIntervalField(selection: $newRefreshInterval)
                 CountryPicker(
                     label: L10n.text("Страна", "Country"),
                     selection: $newCountryCodeOverride,
@@ -214,7 +214,7 @@ struct SettingsView: View {
             return
         }
         newName = ""; newHost = ""; newUser = "root"
-        newRefreshInterval = 30; newAuthMethod = .sshKey; newCountryCodeOverride = nil; newPassword = ""
+        newRefreshInterval = 60; newAuthMethod = .sshKey; newCountryCodeOverride = nil; newPassword = ""
     }
 
     @ViewBuilder
@@ -290,7 +290,7 @@ struct EditServerSheet: View {
                 LabeledTextField(L10n.text("Название", "Name"), text: $name, placeholder: L10n.text("Мой сервер", "My server"))
                 LabeledTextField(L10n.text("Адрес VPS", "VPS address"), text: $host, placeholder: "192.168.1.1")
                 LabeledTextField(L10n.text("Пользователь SSH", "SSH user"), text: $user, placeholder: "root")
-                RefreshIntervalPicker(selection: $refreshInterval)
+                RefreshIntervalField(selection: $refreshInterval)
                 CountryPicker(
                     label: L10n.text("Страна", "Country"),
                     selection: $countryCodeOverride,
@@ -379,24 +379,6 @@ private struct LabeledTextField: View {
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
-        }
-    }
-}
-
-private struct RefreshIntervalPicker: View {
-    @Binding var selection: TimeInterval
-
-    var body: some View {
-        HStack {
-            Text(L10n.text("Проверять автоматически", "Check automatically"))
-                .frame(width: 140, alignment: .trailing)
-                .foregroundStyle(.secondary)
-            Picker("", selection: $selection) {
-                Text(L10n.text("каждые 15 секунд", "every 15 seconds")).tag(TimeInterval(15))
-                Text(L10n.text("каждые 30 секунд", "every 30 seconds")).tag(TimeInterval(30))
-                Text(L10n.text("раз в минуту", "once a minute")).tag(TimeInterval(60))
-            }
-            .labelsHidden()
         }
     }
 }

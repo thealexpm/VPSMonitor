@@ -21,14 +21,14 @@ public enum DemoData {
                 name: "production-web",
                 host: "192.0.2.10",
                 user: "deploy",
-                refreshInterval: 30
+                refreshInterval: 60
             ),
             MonitorConfiguration(
                 id: stagingServerID,
                 name: "staging-bots",
                 host: "192.0.2.20",
                 user: "root",
-                refreshInterval: 30,
+                refreshInterval: 60,
                 authMethod: .password
             )
         ]

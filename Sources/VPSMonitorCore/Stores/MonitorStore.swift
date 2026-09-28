@@ -37,6 +37,10 @@ public final class MonitorStore: ObservableObject {
     @Published public private(set) var hiddenProjectIDs: [UUID: Set<String>] = [:]
     /// Project IDs that appeared since the previous poll, per server. Session-only.
     @Published public private(set) var newProjectIDs: [UUID: Set<String>] = [:]
+    /// Individual actionable problems acknowledged by the user, per server.
+    /// Problems are pruned when they disappear, so a reappearing issue requests
+    /// attention again.
+    @Published public private(set) var acknowledgedAttention: [UUID: Set<String>] = [:]
 
     private let inventoryService: SSHInventoryService
     private let domainRoutingService: DomainRoutingService
@@ -67,9 +71,25 @@ public final class MonitorStore: ObservableObject {
                 self.metricHistory[cfg.id] = Self.demoHistory(for: snap)
             }
         } else {
-            self.configurations = Self.loadConfigurations(from: defaults).map(Self.configurationWithLocalCountry)
+            let loadedConfigurations = Self.loadConfigurations(from: defaults).map(Self.configurationWithLocalCountry)
+            let shouldMigratePollingInterval = !defaults.bool(forKey: "monitor.didMigratePollingIntervalTo60")
+            self.configurations = loadedConfigurations.map { configuration in
+                guard shouldMigratePollingInterval, configuration.refreshInterval < 60 else {
+                    return configuration
+                }
+                var migrated = configuration
+                migrated.refreshInterval = 60
+                return migrated
+            }
+            if shouldMigratePollingInterval {
+                if let data = try? JSONEncoder().encode(self.configurations) {
+                    defaults.set(data, forKey: "monitor.configurations")
+                }
+                defaults.set(true, forKey: "monitor.didMigratePollingIntervalTo60")
+            }
             self.selectedServerID = defaults.string(forKey: "monitor.selectedServerID").flatMap(UUID.init)
             self.hiddenProjectIDs = Self.loadHiddenProjectIDs(from: defaults)
+            self.acknowledgedAttention = Self.loadAcknowledgedAttention(from: defaults)
             self.metricHistory = Self.loadMetricHistory()
             normalizeSelection()
             if defaults.data(forKey: "monitor.configurations") == nil, !configurations.isEmpty {
@@ -170,6 +190,44 @@ public final class MonitorStore: ObservableObject {
         newProjectIDs[serverID] = []
     }
 
+    public func isAttentionAcknowledged(serverID: UUID, key: String) -> Bool {
+        acknowledgedAttention[serverID]?.contains(key) == true
+    }
+
+    public func acknowledgeAttention(serverID: UUID, key: String) {
+        acknowledgeAttention(serverID: serverID, keys: [key])
+    }
+
+    public func acknowledgeAttention(serverID: UUID, keys: Set<String>) {
+        guard !keys.isEmpty else { return }
+        acknowledgedAttention[serverID, default: []].formUnion(keys)
+        saveAcknowledgedAttention()
+    }
+
+    public func clearAttentionAcknowledgement(serverID: UUID) {
+        guard acknowledgedAttention.removeValue(forKey: serverID) != nil else { return }
+        saveAcknowledgedAttention()
+    }
+
+    public func clearAttentionAcknowledgement(serverID: UUID, keys: Set<String>) {
+        guard var acknowledged = acknowledgedAttention[serverID] else { return }
+        acknowledged.subtract(keys)
+        if acknowledged.isEmpty {
+            acknowledgedAttention[serverID] = nil
+        } else {
+            acknowledgedAttention[serverID] = acknowledged
+        }
+        saveAcknowledgedAttention()
+    }
+
+    public func areAttentionKeysAcknowledged(serverID: UUID, keys: Set<String>) -> Bool {
+        !keys.isEmpty && keys.isSubset(of: acknowledgedAttention[serverID] ?? [])
+    }
+
+    public func hasUnacknowledgedAttention(serverID: UUID, keys: Set<String>) -> Bool {
+        !keys.subtracting(acknowledgedAttention[serverID] ?? []).isEmpty
+    }
+
     public var menuTitle: String {
         guard !configurations.isEmpty else {
             return L10n.text("VPS: не настроены", "VPS: not configured")
@@ -255,8 +313,44 @@ public final class MonitorStore: ObservableObject {
             metricHistory[serverID] = history
             saveMetricHistory()
 
+            // Once an incident has actually disappeared, allow the same
+            // incident to notify again if it returns later.
+            let currentReport = InvestigationService.makeReport(
+                snapshot: snapshot,
+                history: history,
+                lastHealthySnapshot: lastHealthySnapshots[serverID],
+                host: configuration.host,
+                user: configuration.user
+            )
+            reconcileAcknowledgedAttention(
+                serverID: serverID,
+                currentKeys: currentReport.attentionKeys
+            )
+
         } catch {
             let errorMessage = error.localizedDescription
+
+            if configuration.authMethod == .password,
+               let sshError = error as? SSHInventoryError,
+               case .noPasswordStored = sshError {
+                if passwordRequest == nil || passwordRequest?.id == configuration.id {
+                    passwordRequest = PasswordRequest(
+                        id: configuration.id,
+                        serverName: configuration.name,
+                        host: configuration.host,
+                        user: configuration.user,
+                        message: L10n.text(
+                            "Пароль для этого сервера не найден в Связке ключей. Введите SSH-пароль ещё раз.",
+                            "The password for this server was not found in Keychain. Enter the SSH password again."
+                        )
+                    )
+                }
+                loadStates[serverID] = .failed(L10n.text(
+                    "Для подключения нужен пароль SSH.",
+                    "An SSH password is required to connect."
+                ))
+                return
+            }
 
             if configuration.authMethod == .sshKey,
                let sshError = error as? SSHInventoryError,
@@ -319,6 +413,7 @@ public final class MonitorStore: ObservableObject {
             metricHistory[id] = nil
             hiddenProjectIDs[id] = nil
             newProjectIDs[id] = nil
+            acknowledgedAttention[id] = nil
             try? KeychainService.deletePassword(for: id)   // best-effort cleanup
         }
         saveHiddenProjectIDs()
@@ -372,7 +467,16 @@ public final class MonitorStore: ObservableObject {
 
     public func isHealthy(serverID: UUID) -> Bool {
         guard case .loaded = state(for: serverID) else { return false }
-        return !hasVisibleStoppedProjects(serverID: serverID)
+        guard let configuration = configurations.first(where: { $0.id == serverID }),
+              let snapshot = snapshots[serverID] else { return false }
+        let report = InvestigationService.makeReport(
+            snapshot: snapshot,
+            history: metricHistory[serverID] ?? [],
+            lastHealthySnapshot: lastHealthySnapshots[serverID],
+            host: configuration.host,
+            user: configuration.user
+        )
+        return !hasUnacknowledgedAttention(serverID: serverID, keys: report.attentionKeys)
     }
 
     private func isFailed(serverID: UUID) -> Bool {
@@ -470,12 +574,54 @@ public final class MonitorStore: ObservableObject {
         defaults.set(dict, forKey: "monitor.hiddenProjectIDs")
     }
 
+    private func saveAcknowledgedAttention() {
+        guard !DemoData.isEnabled else { return }
+        let defaults = UserDefaults.standard
+        let dict = acknowledgedAttention.reduce(into: [String: [String]]()) { out, pair in
+            out[pair.key.uuidString] = pair.value.sorted()
+        }
+        defaults.set(dict, forKey: "monitor.acknowledgedAttention")
+    }
+
+    private func reconcileAcknowledgedAttention(serverID: UUID, currentKeys: Set<String>) {
+        guard let acknowledged = acknowledgedAttention[serverID] else { return }
+        let remaining = acknowledged.intersection(currentKeys)
+        guard remaining != acknowledged else { return }
+        if remaining.isEmpty {
+            acknowledgedAttention[serverID] = nil
+        } else {
+            acknowledgedAttention[serverID] = remaining
+        }
+        saveAcknowledgedAttention()
+    }
+
     private static func loadHiddenProjectIDs(from defaults: UserDefaults) -> [UUID: Set<String>] {
         guard let dict = defaults.dictionary(forKey: "monitor.hiddenProjectIDs")
                 as? [String: [String]] else { return [:] }
         return dict.reduce(into: [:]) { out, pair in
             if let uuid = UUID(uuidString: pair.key) {
                 out[uuid] = Set(pair.value)
+            }
+        }
+    }
+
+    private static func loadAcknowledgedAttention(from defaults: UserDefaults) -> [UUID: Set<String>] {
+        if let dict = defaults.dictionary(forKey: "monitor.acknowledgedAttention")
+            as? [String: [String]] {
+            return dict.reduce(into: [:]) { out, pair in
+                if let id = UUID(uuidString: pair.key) {
+                    out[id] = Set(pair.value)
+                }
+            }
+        }
+
+        // Migrate the first implementation, which stored one aggregate key
+        // such as "metric:response|project:api" per server.
+        guard let legacy = defaults.dictionary(forKey: "monitor.acknowledgedAttention")
+                as? [String: String] else { return [:] }
+        return legacy.reduce(into: [:]) { out, pair in
+            if let id = UUID(uuidString: pair.key) {
+                out[id] = Set(pair.value.split(separator: "|").map(String.init))
             }
         }
     }
@@ -498,7 +644,7 @@ public final class MonitorStore: ObservableObject {
                 name: "My VPS",
                 host: host,
                 user: legacyUser ?? "root",
-                refreshInterval: legacyInterval > 0 ? legacyInterval : 30
+                refreshInterval: legacyInterval > 0 ? legacyInterval : 60
             )
         ]
     }

@@ -12,7 +12,7 @@ struct VPSMonitorProbe {
                     name: args[1],
                     host: args[1],
                     user: args.count >= 3 ? args[2] : "root",
-                    refreshInterval: 30
+                    refreshInterval: 60
                 )
             } else {
                 configuration = .placeholder

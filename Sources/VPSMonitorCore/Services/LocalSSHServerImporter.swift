@@ -49,7 +49,7 @@ public struct LocalSSHServerImporter {
                     name: $0.name,
                     host: $0.host,
                     user: $0.user ?? "root",
-                    refreshInterval: 30,
+                    refreshInterval: 60,
                     authMethod: .sshKey
                 )
             }

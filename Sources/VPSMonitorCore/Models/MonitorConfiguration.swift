@@ -45,6 +45,6 @@ public struct MonitorConfiguration: Codable, Hashable, Identifiable, Sendable {
         name: "My VPS",
         host: "your.server.address",
         user: "root",
-        refreshInterval: 30
+        refreshInterval: 60
     )
 }

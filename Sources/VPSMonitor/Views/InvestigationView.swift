@@ -4,6 +4,8 @@ import VPSMonitorCore
 
 struct InvestigationView: View {
     let report: InvestigationReport
+    let isAttentionAcknowledged: Bool
+    let onAcknowledge: () -> Void
 
     @State private var didCopy = false
     private let metricColumns = [GridItem(.adaptive(minimum: 170, maximum: 230), spacing: 12)]
@@ -22,6 +24,20 @@ struct InvestigationView: View {
                 }
 
                 Spacer()
+
+                if !report.attentionKeys.isEmpty {
+                    Button {
+                        onAcknowledge()
+                    } label: {
+                        Label(
+                            isAttentionAcknowledged
+                                ? L10n.text("Снова показать", "Show again")
+                                : L10n.text("Отметить как изученное", "Mark as reviewed"),
+                            systemImage: isAttentionAcknowledged ? "arrow.uturn.backward" : "checkmark"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 Button {
                     copySnapshot()

@@ -9,7 +9,7 @@ struct AddServerView: View {
     @State private var newName = ""
     @State private var newHost = ""
     @State private var newUser = "root"
-    @State private var newRefreshInterval: TimeInterval = 30
+    @State private var newRefreshInterval: TimeInterval = 60
     @State private var newAuthMethod: AuthMethod = .sshKey
     @State private var newCountryCodeOverride: String?
     @State private var newPassword = ""
@@ -24,7 +24,7 @@ struct AddServerView: View {
                 AddServerField(L10n.text("Название", "Name"), text: $newName, placeholder: L10n.text("Мой сервер", "My server"))
                 AddServerField(L10n.text("Адрес VPS", "VPS address"), text: $newHost, placeholder: "192.168.1.1")
                 AddServerField(L10n.text("Пользователь SSH", "SSH user"), text: $newUser, placeholder: "root")
-                AddServerRefreshIntervalPicker(selection: $newRefreshInterval)
+                RefreshIntervalField(selection: $newRefreshInterval)
                 CountryPicker(
                     label: L10n.text("Страна", "Country"),
                     selection: $newCountryCodeOverride,
@@ -123,7 +123,7 @@ struct AddServerView: View {
         newName = ""
         newHost = ""
         newUser = "root"
-        newRefreshInterval = 30
+        newRefreshInterval = 60
         newAuthMethod = .sshKey
         newCountryCodeOverride = nil
         newPassword = ""
@@ -149,24 +149,6 @@ private struct AddServerField: View {
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
-        }
-    }
-}
-
-private struct AddServerRefreshIntervalPicker: View {
-    @Binding var selection: TimeInterval
-
-    var body: some View {
-        HStack {
-            Text(L10n.text("Проверять автоматически", "Check automatically"))
-                .frame(width: 140, alignment: .trailing)
-                .foregroundStyle(.secondary)
-            Picker("", selection: $selection) {
-                Text(L10n.text("каждые 15 секунд", "every 15 seconds")).tag(TimeInterval(15))
-                Text(L10n.text("каждые 30 секунд", "every 30 seconds")).tag(TimeInterval(30))
-                Text(L10n.text("раз в минуту", "once a minute")).tag(TimeInterval(60))
-            }
-            .labelsHidden()
         }
     }
 }

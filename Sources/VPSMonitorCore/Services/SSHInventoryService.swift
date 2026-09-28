@@ -357,11 +357,11 @@ parse_strongswan_clients() {
   proposal=""; bytes_in=0; bytes_out=0; packets_in=0; packets_out=0; last_activity=0
 
   while IFS= read -r line; do
-    if [[ "$line" =~ ^[[:space:]]*([^:]+):[[:space:]]ESTABLISHED[[:space:]](.+)[[:space:]]ago,.*\.\.\.([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\[ ]]; then
+    if [[ "$line" =~ ^[[:space:]]*([^:]+):[[:space:]]ESTABLISHED[[:space:]](.+)[[:space:]]ago,.*\.\.\.([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\[([^]]+)\] ]]; then
       connection_id="${BASH_REMATCH[1]}"
       connected_for="${BASH_REMATCH[2]} ago"
       public_ip="${BASH_REMATCH[3]}"
-      identity=""; virtual_ip=""; proposal=""
+      identity="${BASH_REMATCH[4]}"; virtual_ip=""; proposal=""
       bytes_in=0; bytes_out=0; packets_in=0; packets_out=0; last_activity=0
     elif [[ "$line" =~ Remote[[:space:]]EAP[[:space:]]identity:[[:space:]](.*)$ ]]; then
       identity="${BASH_REMATCH[1]}"

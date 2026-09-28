@@ -44,8 +44,9 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showingVPNDetails) {
-            if let vpn = store.selectedSnapshot?.vpn {
-                VPNDetailsSheet(vpn: vpn)
+            if let configuration = store.selectedConfiguration,
+               let vpn = store.selectedSnapshot?.vpn {
+                VPNDetailsSheet(configuration: configuration, vpn: vpn)
             }
         }
         .sheet(isPresented: $showingDomainRouting) {
@@ -82,20 +83,9 @@ struct ContentView: View {
                 switch store.selectedLoadState {
                 case .waiting where store.selectedSnapshot == nil,
                      .refreshing where store.selectedSnapshot == nil:
-                    ContentUnavailableView(
-                        L10n.text("Проверяю VPS", "Checking VPS"),
-                        systemImage: "server.rack",
-                        description: Text(L10n.text(
-                            "Получаю список проектов и показатели сервера по SSH.",
-                            "Fetching projects and server metrics over SSH."
-                        ))
-                    )
+                    loadingState
                 case .failed(let message) where store.selectedSnapshot == nil:
-                    ContentUnavailableView(
-                        L10n.text("Ошибка", "Error"),
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(message)
-                    )
+                    connectionErrorState(message: message)
                 default:
                     if let snapshot = store.selectedSnapshot,
                        let serverID = store.selectedConfiguration?.id {
@@ -113,7 +103,22 @@ struct ContentView: View {
                                     }
                                 }
                                 if let investigationReport = selectedInvestigationReport {
-                                    InvestigationView(report: investigationReport)
+                                    InvestigationView(
+                                        report: investigationReport,
+                                        isAttentionAcknowledged: store.areAttentionKeysAcknowledged(
+                                            serverID: serverID,
+                                            keys: investigationReport.attentionKeys
+                                        ),
+                                        onAcknowledge: {
+                                            let keys = investigationReport.attentionKeys
+                                            guard !keys.isEmpty else { return }
+                                            if store.areAttentionKeysAcknowledged(serverID: serverID, keys: keys) {
+                                                store.clearAttentionAcknowledgement(serverID: serverID, keys: keys)
+                                            } else {
+                                                store.acknowledgeAttention(serverID: serverID, keys: keys)
+                                            }
+                                        }
+                                    )
                                 }
                                 ProjectListView(serverID: serverID, store: store)
                                 discoveryNote(snapshot: snapshot)
@@ -125,6 +130,7 @@ struct ContentView: View {
             }
         }
         .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .toolbar {
             ToolbarItem {
                 Button {
@@ -147,31 +153,102 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 10) {
-                    if let configuration = store.selectedConfiguration {
-                        Text(ServerPresentation.countryMarker(for: configuration))
-                            .font(.largeTitle)
-                    }
-                    Text(store.selectedConfiguration?.name ?? L10n.text("VPS не настроены", "VPS not configured"))
-                        .font(.largeTitle.bold())
+        HStack(alignment: .center, spacing: 16) {
+            if let configuration = store.selectedConfiguration {
+                Text(ServerPresentation.countryMarker(for: configuration))
+                    .font(.system(size: 34))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(configuration.name)
+                        .font(.title.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(configuration.host)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
-                Text(store.selectedConfiguration?.host ?? L10n.text(
-                    "Добавьте сервер в настройках",
-                    "Add a server in Settings"
-                ))
-                    .foregroundStyle(.secondary)
+            } else {
+                Text(L10n.text("VPS не настроены", "VPS not configured"))
+                    .font(.title.bold())
             }
 
             Spacer()
 
             StatusBadge(
                 state: store.selectedLoadState,
-                hasVisibleStoppedProjects: store.selectedConfiguration.map {
-                    store.hasVisibleStoppedProjects(serverID: $0.id)
-                } ?? false
+                needsAttention: selectedInvestigationReport?.attentionKeys.isEmpty == false,
+                isAcknowledged: selectedAttentionAcknowledged
             )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+
+    private var loadingState: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.12))
+                        .frame(width: 48, height: 48)
+                    ProgressView()
+                        .controlSize(.regular)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.text("Проверяю VPS", "Checking VPS"))
+                        .font(.title2.bold())
+                    Text(L10n.text(
+                        "Получаю список проектов и показатели сервера по SSH.",
+                        "Fetching projects and server metrics over SSH."
+                    ))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 12)
+            }
+
+            Divider()
+
+            Label(
+                L10n.text("Первый ответ может занять несколько секунд.", "The first response may take a few seconds."),
+                systemImage: "clock"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func connectionErrorState(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                L10n.text("Не удалось подключиться", "Could not connect"),
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.title2.bold())
+            .foregroundStyle(.orange)
+
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.orange.opacity(0.24), lineWidth: 1)
         }
     }
 
@@ -203,6 +280,12 @@ struct ContentView: View {
             host: configuration.host,
             user: configuration.user
         )
+    }
+
+    private var selectedAttentionAcknowledged: Bool {
+        guard let serverID = store.selectedConfiguration?.id,
+              let keys = selectedInvestigationReport?.attentionKeys else { return false }
+        return store.areAttentionKeysAcknowledged(serverID: serverID, keys: keys)
     }
 
     private func discoveryNote(snapshot: ServerSnapshot) -> some View {
@@ -369,7 +452,8 @@ private struct ServerSidebarRow: View {
 
 private struct StatusBadge: View {
     let state: MonitorStore.LoadState
-    let hasVisibleStoppedProjects: Bool
+    let needsAttention: Bool
+    let isAcknowledged: Bool
 
     var body: some View {
         Label(title, systemImage: icon)
@@ -386,9 +470,13 @@ private struct StatusBadge: View {
         case .refreshing: L10n.text("Проверяю", "Checking")
         case .failed: L10n.text("Ошибка", "Error")
         case .loaded:
-            hasVisibleStoppedProjects
-                ? L10n.text("Нужно внимание", "Needs attention")
-                : L10n.text("Всё работает", "Everything works")
+            if isAcknowledged {
+                L10n.text("Изучено", "Reviewed")
+            } else {
+                needsAttention
+                    ? L10n.text("Нужно внимание", "Needs attention")
+                    : L10n.text("Всё работает", "Everything works")
+            }
         }
     }
 
@@ -397,9 +485,9 @@ private struct StatusBadge: View {
         case .waiting, .refreshing: "arrow.triangle.2.circlepath"
         case .failed: "xmark.circle.fill"
         case .loaded:
-            hasVisibleStoppedProjects
-                ? "exclamationmark.triangle.fill"
-                : "checkmark.circle.fill"
+            isAcknowledged || !needsAttention
+                ? "checkmark.circle.fill"
+                : "exclamationmark.triangle.fill"
         }
     }
 
@@ -408,7 +496,7 @@ private struct StatusBadge: View {
         case .waiting, .refreshing: .secondary
         case .failed: .red
         case .loaded:
-            hasVisibleStoppedProjects ? .orange : .green
+            isAcknowledged ? .secondary : (needsAttention ? .orange : .green)
         }
     }
 }
@@ -1049,8 +1137,10 @@ private struct VPNStackRow: View {
 }
 
 private struct VPNDetailsSheet: View {
+    let configuration: MonitorConfiguration
     let vpn: VPNSnapshot
     @Environment(\.dismiss) private var dismiss
+    @State private var showingProvisioning = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1061,6 +1151,12 @@ private struct VPNDetailsSheet: View {
                 Text(summary)
                     .font(.headline)
                     .foregroundStyle(vpn.isHealthy ? .green : .orange)
+                Button {
+                    showingProvisioning = true
+                } label: {
+                    Label(L10n.text("Apple-профиль", "Apple profile"), systemImage: "person.badge.key")
+                }
+                .buttonStyle(.bordered)
                 Button {
                     dismiss()
                 } label: {
@@ -1091,6 +1187,9 @@ private struct VPNDetailsSheet: View {
         .onAppear {
             NSApp.activate(ignoringOtherApps: true)
         }
+        .sheet(isPresented: $showingProvisioning) {
+            VPNProvisioningSheet(configuration: configuration)
+        }
     }
 
     private var summary: String {
@@ -1114,6 +1213,219 @@ private struct VPNDetailsSheet: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct VPNProvisioningSheet: View {
+    let configuration: MonitorConfiguration
+    @Environment(\.dismiss) private var dismiss
+    @State private var username = ""
+    @State private var password = VPNProvisioningService.generatedPassword()
+    @State private var profileName = ""
+    @State private var showsPassword = false
+    @State private var isWorking = false
+    @State private var message: String?
+    @State private var errorMessage: String?
+
+    private let service = VPNProvisioningService()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Label(L10n.text("Создать Apple VPN-профиль", "Create Apple VPN profile"), systemImage: "person.badge.key")
+                    .font(.title2.bold())
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                provisioningField(
+                    L10n.text("Пользователь", "Username"),
+                    text: $username,
+                    placeholder: "alex-macbook"
+                )
+                provisioningField(
+                    L10n.text("Название профиля", "Profile name"),
+                    text: $profileName,
+                    placeholder: "\(configuration.name) VPN"
+                )
+
+                HStack {
+                    Text(L10n.text("Пароль", "Password"))
+                        .frame(width: 150, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                    Group {
+                        if showsPassword {
+                            TextField(L10n.text("Пароль VPN", "VPN password"), text: $password)
+                        } else {
+                            SecureField(L10n.text("Пароль VPN", "VPN password"), text: $password)
+                        }
+                    }
+                    .textFieldStyle(.roundedBorder)
+                    Button {
+                        copyPassword()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(L10n.text("Скопировать пароль", "Copy password"))
+                    Button {
+                        showsPassword.toggle()
+                    } label: {
+                        Image(systemName: showsPassword ? "eye.slash" : "eye")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(showsPassword ? L10n.text("Скрыть пароль", "Hide password") : L10n.text("Показать пароль", "Show password"))
+                    Button {
+                        password = VPNProvisioningService.generatedPassword()
+                        message = L10n.text("Пароль сгенерирован.", "Password generated.")
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(L10n.text("Сгенерировать новый пароль", "Generate a new password"))
+                }
+
+                Text(L10n.text(
+                    "Профиль добавит пользователя на strongSwan-сервер и сохранит .mobileconfig для установки на iPhone, iPad или Mac. В списке подключений сервер будет видеть имя пользователя из этого профиля, поэтому называйте его по устройству.",
+                    "The profile adds a user to the strongSwan server and saves a .mobileconfig for iPhone, iPad, or Mac. The server will show the username from this profile in the connections list, so name it after the device."
+                ))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 158)
+            }
+
+            if let message {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.green)
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Button(L10n.text("Отменить", "Cancel")) {
+                    dismiss()
+                }
+                .disabled(isWorking)
+                Spacer()
+                Button {
+                    createProfile()
+                } label: {
+                    if isWorking {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label(L10n.text("Создать и сохранить", "Create and save"), systemImage: "square.and.arrow.down")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canCreate || isWorking)
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+        .onAppear {
+            if username.isEmpty {
+                username = "\(configuration.name)-mac"
+                    .lowercased()
+                    .replacingOccurrences(of: #"[^a-z0-9._-]+"#, with: "-", options: .regularExpression)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
+            }
+            if profileName.isEmpty {
+                profileName = "\(configuration.name) VPN"
+            }
+        }
+    }
+
+    private var canCreate: Bool {
+        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        password.trimmingCharacters(in: .whitespacesAndNewlines).count >= 12
+    }
+
+    private func createProfile() {
+        errorMessage = nil
+        message = nil
+        isWorking = true
+
+        Task {
+            do {
+                let result = try await service.createAppleProfile(
+                    configuration: configuration,
+                    username: username,
+                    password: password,
+                    profileName: profileName
+                )
+                let savedURL = try await MainActor.run {
+                    try save(profile: result.profileData, username: result.username)
+                }
+                await MainActor.run {
+                    message = L10n.text(
+                        "Профиль сохранён: \(savedURL.lastPathComponent)",
+                        "Profile saved: \(savedURL.lastPathComponent)"
+                    )
+                    isWorking = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isWorking = false
+                }
+            }
+        }
+    }
+
+    private func copyPassword() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(password, forType: .string)
+        message = L10n.text("Пароль скопирован.", "Password copied.")
+    }
+
+    @MainActor
+    private func save(profile data: Data, username: String) throws -> URL {
+        let panel = NSSavePanel()
+        panel.title = L10n.text("Сохранить Apple VPN-профиль", "Save Apple VPN profile")
+        panel.nameFieldStringValue = "\(safeFileComponent(username)).mobileconfig"
+        panel.allowedContentTypes = [.init(filenameExtension: "mobileconfig")!]
+        panel.canCreateDirectories = true
+        let response = panel.runModal()
+        guard response == .OK, let url = panel.url else {
+            throw CocoaError(.userCancelled)
+        }
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private func provisioningField(_ title: String, text: Binding<String>, placeholder: String) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 150, alignment: .trailing)
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func safeFileComponent(_ value: String) -> String {
+        let cleaned = value.replacingOccurrences(
+            of: #"[^A-Za-z0-9._-]+"#,
+            with: "-",
+            options: .regularExpression
+        )
+        return cleaned.isEmpty ? "vpn-profile" : cleaned
     }
 }
 
